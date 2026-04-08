@@ -1,16 +1,21 @@
 import Fastify from 'fastify';
 
-const fastify = Fastify({
+import { env } from '@/config/env.js';
+
+const app = Fastify({
   logger: true,
 });
 
-fastify.get('/', function handler() {
+app.get('/', function handler() {
   return { hello: 'world' };
 });
 
-try {
-  await fastify.listen({ port: 3000 });
-} catch (err) {
-  fastify.log.error(err);
-  process.exit(1);
-}
+app
+  .listen({
+    host: env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0',
+    port: 3000,
+  })
+  .catch((err: unknown) => {
+    app.log.error(err);
+    process.exit(1);
+  });

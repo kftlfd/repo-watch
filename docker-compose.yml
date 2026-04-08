@@ -8,8 +8,9 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/repo_watch
-      - REDIS_URL=redis://redis:6379
+      - NODE_ENV="prod"
+      - DATABASE_URL="postgresql://postgres:postgres@postgres:5432/repo_watch"
+      - REDIS_URL="redis://redis:6379"
     depends_on:
       postgres:
         condition: service_healthy
@@ -24,9 +25,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=repo_watch
+      - POSTGRES_USER="postgres"
+      - POSTGRES_PASSWORD="postgres"
+      - POSTGRES_DB="repo_watch"
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

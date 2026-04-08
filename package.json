@@ -1,0 +1,30 @@
+{
+  "name": "repo-watch",
+  "version": "1.0.0",
+  "description": "GitHub Release Notification API",
+  "author": "kftlfd",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": "^22"
+  },
+  "scripts": {
+    "dev": "tsx --watch src/server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "prettier -c . && tsc && eslint . --max-warnings 0",
+    "fmt": "prettier -w ."
+  },
+  "dependencies": {
+    "fastify": "5.8.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@ianvs/prettier-plugin-sort-imports": "4.7.1",
+    "@types/node": "22.19.17",
+    "eslint": "10.2.0",
+    "prettier": "3.8.1",
+    "tsx": "4.21.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.58.1"
+  }
+}

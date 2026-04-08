@@ -19,7 +19,8 @@
     "drizzle-orm": "0.45.2",
     "fastify": "5.8.4",
     "neverthrow": "8.2.0",
-    "pg": "8.20.0"
+    "pg": "8.20.0",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

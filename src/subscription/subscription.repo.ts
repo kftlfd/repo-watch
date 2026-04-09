@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import { db } from '@/db/client.js';
-import { subscriptions } from '@/db/schema.js';
+import { repositories, subscriptions } from '@/db/schema.js';
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
@@ -48,7 +48,7 @@ export async function findConfirmedByRepositoryId(repositoryId: number) {
 
 export async function create(data: NewSubscription) {
   const [row] = await db.insert(subscriptions).values(data).returning();
-  return row;
+  return row ?? null;
 }
 
 export async function update(id: number, data: Partial<NewSubscription>) {
@@ -67,4 +67,29 @@ export async function softDelete(id: number) {
     .where(eq(subscriptions.id, id))
     .returning();
   return row ?? null;
+}
+
+export interface SubscriptionsListItem {
+  email: string;
+  repo: string;
+  confirmed: boolean;
+  last_seen_tag: string | null;
+}
+
+export async function getSubscriptionsForEmail(email: string): Promise<SubscriptionsListItem[]> {
+  const rows = await db
+    .select({
+      subscription: subscriptions,
+      repository: repositories,
+    })
+    .from(subscriptions)
+    .innerJoin(repositories, eq(subscriptions.repositoryId, repositories.id))
+    .where(eq(subscriptions.email, email));
+
+  return rows.map((row) => ({
+    email: row.subscription.email,
+    repo: row.repository.fullName,
+    confirmed: row.subscription.confirmedAt !== null,
+    last_seen_tag: row.repository.lastSeenTag,
+  }));
 }

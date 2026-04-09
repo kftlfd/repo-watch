@@ -64,3 +64,7 @@ export function getTokenUrl(token: string, type: TokenType): string {
   const path = type === 'confirm' ? '/confirm' : '/unsubscribe';
   return `${env.BASE_URL}${path}/${token}`;
 }
+
+export async function deleteToken(tokenId: number): Promise<void> {
+  await tokenRepo.deleteById(tokenId);
+}

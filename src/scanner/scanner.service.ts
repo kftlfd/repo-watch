@@ -2,7 +2,7 @@ import { err, Result } from 'neverthrow';
 
 import { setCacheLatestTag } from '@/cache/cache.service.js';
 import { getLatestRelease } from '@/github/github.client.js';
-import { emailQueue } from '@/queue/queue.js';
+import { enqueueReleaseEmail } from '@/queue/release-notifications/index.js';
 import * as repositoryRepo from '@/repository/repository.repo.js';
 import * as subscriptionRepo from '@/subscription/subscription.repo.js';
 import { HttpError } from '@/utils/errors.js';
@@ -74,7 +74,7 @@ async function processRepository(repo: repositoryRepo.Repository) {
   }
 
   for (const sub of subscriptions) {
-    await emailQueue.add('notification', {
+    await enqueueReleaseEmail({
       repoId,
       email: sub.email,
       tag: latestTag,

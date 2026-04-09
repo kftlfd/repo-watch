@@ -10,4 +10,10 @@ export default defineConfig(eslint.configs.recommended, tseslint.configs.strictT
       projectService: true,
     },
   },
+  rules: {
+    '@typescript-eslint/no-unnecessary-condition': [
+      'error',
+      { allowConstantLoopConditions: 'only-allowed-literals' },
+    ],
+  },
 });

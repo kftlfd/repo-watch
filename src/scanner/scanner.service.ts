@@ -5,31 +5,18 @@ import { getLatestRelease } from '@/github/github.client.js';
 import { emailQueue } from '@/queue/queue.js';
 import * as repositoryRepo from '@/repository/repository.repo.js';
 import * as subscriptionRepo from '@/subscription/subscription.repo.js';
-import { AppError } from '@/utils/errors.js';
+import { HttpError } from '@/utils/errors.js';
+import { sleep } from '@/utils/sleep.js';
 
-const SCAN_INTERVAL_MS = 60 * 1000;
+const SCAN_INTERVAL_MS = 10 * 60 * 1000;
 const BATCH_SIZE = 20;
 const POLL_DELAY_MS = 200;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
-function isRetryableError(error: AppError): boolean {
-  if (error.type === 'External' && error.service === 'github') {
-    const msg = error.message.toLowerCase();
-    return msg.includes('rate') || msg.includes('too many');
-  }
+async function fetchWithRetry(owner: string, name: string): Promise<Result<string, HttpError>> {
+  let delayMs = INITIAL_RETRY_DELAY_MS;
 
-  if (error.type === 'Internal') {
-    const msg = error.message.toLowerCase();
-    return msg.includes('fetch') || msg.includes('network');
-  }
-
-  return false;
-}
-
-async function fetchWithRetry(owner: string, name: string): Promise<Result<string, AppError>> {
-  let delay = INITIAL_RETRY_DELAY_MS;
-
-  for (;;) {
+  while (true) {
     const result = await getLatestRelease(owner, name);
 
     if (result.isOk()) {
@@ -37,15 +24,18 @@ async function fetchWithRetry(owner: string, name: string): Promise<Result<strin
     }
 
     const error = result.error;
-    if (!isRetryableError(error)) {
+    if (error.type !== 'TooManyRequests') {
       return err(error);
     }
 
-    console.log(
-      `Retryable error for ${owner}/${name}: ${error.message}, retrying in ${String(delay)}ms...`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    delay *= 2;
+    let retryDelayMs = error.retryAfter;
+    if (!retryDelayMs) {
+      retryDelayMs = delayMs;
+      delayMs *= 2;
+    }
+
+    console.log(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
+    await sleep(retryDelayMs);
   }
 }
 
@@ -56,7 +46,7 @@ async function processRepository(repo: repositoryRepo.Repository) {
 
   if (releaseResult.isErr()) {
     const error = releaseResult.error;
-    console.error(`Failed to fetch release for ${fullName}:`, error.message);
+    console.error(`Failed to fetch release for ${fullName}:`, error.type);
     await repositoryRepo.update(repoId, { lastCheckedAt: new Date() });
     return;
   }
@@ -70,12 +60,16 @@ async function processRepository(repo: repositoryRepo.Repository) {
   }
 
   await repositoryRepo.update(repoId, { lastSeenTag: latestTag, lastCheckedAt: new Date() });
-  await setCacheLatestTag(repoId, latestTag);
+
+  await setCacheLatestTag(repoId, latestTag).catch((err: unknown) => {
+    console.log('Cache write failed:', err);
+  });
 
   const subscriptions = await subscriptionRepo.findConfirmedByRepositoryId(repoId);
 
-  if (subscriptions.length === 0) {
-    console.log(`New release for ${fullName}: ${latestTag}, no subscribers`);
+  if (subscriptions.length < 1) {
+    console.log(`New release for ${fullName}: ${latestTag}, no subscribers, marking as inactive`);
+    await repositoryRepo.update(repoId, { isActive: false });
     return;
   }
 
@@ -95,21 +89,21 @@ async function processRepository(repo: repositoryRepo.Repository) {
 
 export async function startScanner() {
   console.log(
-    `Scanner started (interval: ${String(SCAN_INTERVAL_MS)}ms, batch: ${String(BATCH_SIZE)})`,
+    `Scanner started (interval: ${SCAN_INTERVAL_MS.toString()}ms, batch: ${BATCH_SIZE.toString()})`,
   );
 
-  for (;;) {
+  while (true) {
     try {
       const repos = await repositoryRepo.findBatchForScanning(BATCH_SIZE);
 
       for (const repo of repos) {
         await processRepository(repo);
-        await new Promise((resolve) => setTimeout(resolve, POLL_DELAY_MS));
+        await sleep(POLL_DELAY_MS);
       }
     } catch (error) {
       console.error('Scanner error:', error);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, SCAN_INTERVAL_MS));
+    await sleep(SCAN_INTERVAL_MS);
   }
 }

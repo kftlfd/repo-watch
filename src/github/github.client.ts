@@ -2,7 +2,7 @@ import { err, ok, ResultAsync } from 'neverthrow';
 import { z, ZodType } from 'zod';
 
 import { env } from '@/config/env.js';
-import type { HttpError } from '@/utils/errors.js';
+import { parseRetryAfter, type HttpError } from '@/utils/errors.js';
 
 const BASE_URL = 'https://api.github.com';
 
@@ -69,7 +69,10 @@ function mapResponseToError(response: Response): HttpError {
     return { type: 'Unauthorized', message: 'Authentication failed' };
   }
   if (response.status === 429) {
-    return { type: 'TooManyRequests' };
+    return {
+      type: 'TooManyRequests',
+      retryAfter: parseRetryAfter(response.headers.get('retry-after')),
+    };
   }
   return { type: 'Unknown', statusCode: response.status, message: response.statusText };
 }

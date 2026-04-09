@@ -15,6 +15,7 @@
     "fmt": "prettier -w ."
   },
   "dependencies": {
+    "bullmq": "5.73.2",
     "dotenv": "17.4.1",
     "drizzle-orm": "0.45.2",
     "fastify": "5.8.4",

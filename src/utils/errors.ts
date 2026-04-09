@@ -38,3 +38,11 @@ function isAppError(error: unknown): error is AppError {
     typeof (error as Record<string, unknown>)['type'] === 'string'
   );
 }
+
+export type HttpError =
+  | { type: 'NetworkError'; message: string }
+  | { type: 'NotFound'; message: string }
+  | { type: 'BadResponse'; message: string }
+  | { type: 'Unauthorized'; message: string }
+  | { type: 'TooManyRequests'; retryAfter?: number }
+  | { type: 'Unknown'; statusCode: number; message: string };

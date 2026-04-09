@@ -1,8 +1,8 @@
 import { err, ok, ResultAsync } from 'neverthrow';
-import { z } from 'zod';
+import { z, ZodType } from 'zod';
 
 import { env } from '@/config/env.js';
-import type { AppError } from '@/utils/errors.js';
+import type { HttpError } from '@/utils/errors.js';
 
 const BASE_URL = 'https://api.github.com';
 
@@ -33,115 +33,64 @@ function getHeaders(): Record<string, string> {
   return headers;
 }
 
-async function httpGet(url: string) {
-  return fetch(url, { headers: getHeaders() });
+function httpGet<TSchema extends ZodType>(
+  url: string,
+  bodySchema: TSchema,
+): ResultAsync<z.infer<TSchema>, HttpError> {
+  const response = ResultAsync.fromPromise(
+    fetch(url, { headers: getHeaders() }),
+    (): HttpError => ({ type: 'NetworkError', message: 'Failed to fetch' }),
+  );
+
+  const checked = response.andThen((resp) => (resp.ok ? ok(resp) : err(mapResponseToError(resp))));
+
+  const jsonData = checked.andThen((resp) =>
+    ResultAsync.fromPromise(
+      resp.json(),
+      (): HttpError => ({ type: 'BadResponse', message: 'Failed to parse json' }),
+    ),
+  );
+
+  const parsedBody = jsonData.andThen((resp) => {
+    const result = bodySchema.safeParse(resp);
+    return result.success
+      ? ok(result.data)
+      : err({ type: 'BadResponse', message: 'Failed to validate body' } as HttpError);
+  });
+
+  return parsedBody;
 }
 
-function mapResponseToError(response: Response, context?: string): AppError {
+function mapResponseToError(response: Response): HttpError {
   if (response.status === 404) {
-    return { type: 'NotFound', message: context ?? 'Resource not found' };
+    return { type: 'NotFound', message: 'Resource not found' };
   }
   if (response.status === 401 || response.status === 403) {
-    return { type: 'External', service: 'github', message: 'Authentication failed' };
+    return { type: 'Unauthorized', message: 'Authentication failed' };
   }
   if (response.status === 429) {
-    return { type: 'External', service: 'github', message: 'Rate limited' };
+    return { type: 'TooManyRequests' };
   }
-  return { type: 'External', service: 'github', message: response.statusText };
+  return { type: 'Unknown', statusCode: response.status, message: response.statusText };
 }
 
 export function getRepo(owner: string, repo: string) {
-  const fetched = ResultAsync.fromPromise(
-    httpGet(`${BASE_URL}/repos/${owner}/${repo}`),
-    () => ({ type: 'Internal', message: 'Failed to fetch from GitHub API' }) as AppError,
-  );
-
-  const checked = fetched.andThen((response) =>
-    response.ok
-      ? ok(response)
-      : err(mapResponseToError(response, `Repository ${owner}/${repo} not found`)),
-  );
-
-  const jsonData = checked.andThen((response) =>
-    ResultAsync.fromPromise(
-      response.json(),
-      () => ({ type: 'Internal', message: 'Failed to parse GitHub response' }) as AppError,
-    ),
-  );
-
-  const repoInfo = jsonData.andThen((data) => {
-    const result = RepoSchema.safeParse(data);
-    return result.success
-      ? ok(result.data)
-      : err({ type: 'Internal', message: 'Invalid GitHub API response' } as AppError);
-  });
-
-  return repoInfo;
+  return httpGet(`${BASE_URL}/repos/${owner}/${repo}`, RepoSchema);
 }
 
 function getLatestReleaseTag(owner: string, repo: string) {
-  const fetched = ResultAsync.fromPromise(
-    httpGet(`${BASE_URL}/repos/${owner}/${repo}/releases/latest`),
-    () => ({ type: 'Internal', message: 'Failed to fetch from GitHub API' }) as AppError,
+  return httpGet(`${BASE_URL}/repos/${owner}/${repo}/releases/latest`, ReleaseSchema).map(
+    (data) => data.tag_name,
   );
-
-  const checked = fetched.andThen((response) =>
-    response.ok
-      ? ok(response)
-      : response.status === 404
-        ? err({ type: 'NotFound', message: 'No releases found, trying tags' } as AppError)
-        : err(mapResponseToError(response)),
-  );
-
-  const jsonData = checked.andThen((response) =>
-    ResultAsync.fromPromise(
-      response.json(),
-      () => ({ type: 'Internal', message: 'Failed to parse GitHub response' }) as AppError,
-    ),
-  );
-
-  const tag = jsonData.andThen((data) => {
-    const result = ReleaseSchema.safeParse(data);
-    return result.success
-      ? ok(result.data.tag_name)
-      : err({ type: 'Internal', message: 'Invalid GitHub API response' } as AppError);
-  });
-
-  return tag;
 }
 
 function getLatestTag(owner: string, repo: string) {
-  const fetched = ResultAsync.fromPromise(
-    httpGet(`${BASE_URL}/repos/${owner}/${repo}/tags`),
-    () => ({ type: 'Internal', message: 'Failed to fetch from GitHub API' }) as AppError,
-  );
-
-  const checked = fetched.andThen((response) =>
-    response.ok
-      ? ok(response)
-      : err(mapResponseToError(response, `No releases or tags found for ${owner}/${repo}`)),
-  );
-
-  const jsonData = checked.andThen((response) =>
-    ResultAsync.fromPromise(
-      response.json(),
-      () => ({ type: 'Internal', message: 'Failed to parse GitHub response' }) as AppError,
-    ),
-  );
-
-  const tag = jsonData.andThen((data) => {
-    const result = z.array(TagSchema).safeParse(data);
-    if (!result.success) {
-      return err({ type: 'Internal', message: 'Invalid GitHub API response' } as AppError);
-    }
-    const tagValue = result.data[0]?.name;
-    if (!tagValue) {
-      return err({ type: 'NotFound', message: `No tags found for ${owner}/${repo}` } as AppError);
-    }
-    return ok(tagValue);
+  return httpGet(`${BASE_URL}/repos/${owner}/${repo}/tags`, z.array(TagSchema)).andThen((data) => {
+    const tagValue = data[0]?.name;
+    return tagValue
+      ? ok(tagValue)
+      : err({ type: 'NotFound', message: `No tags found for ${owner}/${repo}` } as HttpError);
   });
-
-  return tag;
 }
 
 export function getLatestRelease(owner: string, repo: string) {

@@ -84,7 +84,7 @@ export async function getSubscriptionsForEmail(email: string): Promise<Subscript
     })
     .from(subscriptions)
     .innerJoin(repositories, eq(subscriptions.repositoryId, repositories.id))
-    .where(eq(subscriptions.email, email));
+    .where(and(eq(subscriptions.email, email), isNull(subscriptions.removedAt)));
 
   return rows.map((row) => ({
     email: row.subscription.email,

@@ -2,26 +2,20 @@ import type { FastifyPluginCallback } from 'fastify';
 
 import { mapErrorToHttp } from '@/utils/errors.js';
 
-import {
-  confirm,
-  listSubscriptions,
-  subscribe,
-  SubscribeSchema,
-  unsubscribe,
-} from './subscription.service.js';
+import { EmailSchema, SubscribeInputSchema } from './subscription.schema.js';
+import { confirm, listSubscriptions, subscribe, unsubscribe } from './subscription.service.js';
 
 export const subscriptionRoutes: FastifyPluginCallback = (fastify, opts, done) => {
   fastify.post('/subscribe', async (req, reply) => {
-    const parsed = SubscribeSchema.safeParse(req.body);
-    if (parsed.success) {
-      const result = await subscribe(parsed.data);
-      return result.match(
-        () =>
-          reply.code(200).send({ message: 'Subscription successful. Confirmation email sent.' }),
-        (error) => reply.code(mapErrorToHttp(error)).send(error),
-      );
+    const parsed = SubscribeInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Invalid input' });
     }
-    return reply.code(400).send({ message: 'Invalid input' });
+    const result = await subscribe(parsed.data);
+    return result.match(
+      () => reply.code(200).send({ message: 'Subscription successful. Confirmation email sent.' }),
+      (error) => reply.code(mapErrorToHttp(error)).send(error),
+    );
   });
 
   fastify.get<{ Params: { token: string } }>('/confirm/:token', async (req, reply) => {
@@ -46,6 +40,9 @@ export const subscriptionRoutes: FastifyPluginCallback = (fastify, opts, done) =
     const email = req.query.email;
     if (!email) {
       return reply.code(400).send({ message: 'Email parameter is required' });
+    }
+    if (!EmailSchema.safeParse(email).success) {
+      return reply.code(400).send({ message: 'Invalid email' });
     }
     const result = await listSubscriptions(email);
     return result.match(

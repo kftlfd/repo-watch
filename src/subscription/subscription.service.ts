@@ -1,5 +1,4 @@
 import { err, errAsync, ok, okAsync, ResultAsync } from 'neverthrow';
-import { z } from 'zod';
 
 import { getRepo } from '@/github/github.client.js';
 import { enqueueConfirmationEmail } from '@/queue/confirmation-emails/index.js';
@@ -8,20 +7,11 @@ import * as subscriptionRepo from '@/subscription/subscription.repo.js';
 import * as tokenService from '@/token/token.service.js';
 import { AppError, type HttpError } from '@/utils/errors.js';
 
-export const SubscribeSchema = z.object({
-  email: z.email(),
-  repoFullName: z.string().regex(/^[^/]+\/[^/]+$/, 'Invalid format. Use owner/repo'),
-});
-
-export type SubscribeInput = z.infer<typeof SubscribeSchema>;
+import { SubscribeInput } from './subscription.schema.js';
 
 function parseRepoFullName(fullName: string): { owner: string; name: string } {
   const [owner = '', name = ''] = fullName.split('/');
   return { owner, name };
-}
-
-function validationError(message: string) {
-  return errAsync<never, AppError>({ type: 'Validation', message });
 }
 
 function mapHttpErrorToAppError(error: HttpError): AppError {
@@ -42,13 +32,7 @@ function mapHttpErrorToAppError(error: HttpError): AppError {
 }
 
 export async function subscribe(input: SubscribeInput) {
-  const parsed = SubscribeSchema.safeParse(input);
-  if (!parsed.success) {
-    const message = parsed.error.message || 'Invalid input';
-    return validationError(message);
-  }
-
-  const { email, repoFullName } = parsed.data;
+  const { email, repoFullName } = input;
   const { owner, name } = parseRepoFullName(repoFullName);
 
   // 1. Get the repo from DB or fetch from GH
@@ -112,7 +96,7 @@ export async function subscribe(input: SubscribeInput) {
 
   const updatedRepo = updatedRepoResult.value;
 
-  // 3. Check if already subscribed and ceate/update subscription
+  // 3. Check if already subscribed and create/update subscription
   const subscription = ResultAsync.fromPromise(
     subscriptionRepo.findActiveByEmailAndRepoId(email, updatedRepo.id),
     () => 'DB_QUERY_FAILED' as const,
@@ -227,10 +211,6 @@ export function unsubscribe(token: string): ResultAsync<void, AppError> {
 }
 
 export function listSubscriptions(email: string) {
-  if (!z.email().safeParse(email).success) {
-    return validationError('Invalid email');
-  }
-
   return ResultAsync.fromPromise(
     subscriptionRepo.getSubscriptionsForEmail(email),
     (): AppError => ({ type: 'Internal', message: 'DB error' }),

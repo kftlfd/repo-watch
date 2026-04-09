@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 
 import { env } from '@/config/env.js';
+import { subscriptionRoutes } from '@/subscription/subscription.controller.js';
 
 const app = Fastify({
   logger: true,
@@ -9,6 +10,8 @@ const app = Fastify({
 app.get('/', function handler() {
   return { hello: 'world' };
 });
+
+app.register(subscriptionRoutes, { prefix: '/api' });
 
 app
   .listen({

@@ -1,10 +1,11 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import { err, ok, ResultAsync } from 'neverthrow';
 
+import type { AppError } from '@/utils/errors.js';
 import { db } from '@/db/client.js';
 import { repositories } from '@/db/schema.js';
 import { redis } from '@/redis/redis.js';
-import { AppError, toAppError } from '@/utils/errors.js';
+import { toAppError } from '@/utils/errors.js';
 
 export type Repository = typeof repositories.$inferSelect;
 export type NewRepository = typeof repositories.$inferInsert;

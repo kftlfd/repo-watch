@@ -2,12 +2,8 @@ import { Result, ResultAsync } from 'neverthrow';
 
 import type { AppError } from '@/utils/errors.js';
 
-import {
-  ConfirmationEmailData,
-  ReleaseEmailData,
-  renderConfirmationEmail,
-  renderReleaseEmail,
-} from './templates.js';
+import type { ConfirmationEmailData, ReleaseEmailData } from './templates.js';
+import { renderConfirmationEmail, renderReleaseEmail } from './templates.js';
 
 export type Email =
   | { type: 'confirmation'; data: ConfirmationEmailData }

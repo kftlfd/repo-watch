@@ -2,8 +2,8 @@ import type { FastifyPluginCallback } from 'fastify';
 
 import { mapErrorToHttp } from '@/utils/errors.js';
 
+import type { SubscriptionService } from './subscription.service.js';
 import { EmailSchema, SubscribeInputSchema } from './subscription.schema.js';
-import { SubscriptionService } from './subscription.service.js';
 
 export function createSubscriptionController(
   subscriptionService: SubscriptionService,

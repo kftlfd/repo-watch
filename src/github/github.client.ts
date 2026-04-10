@@ -1,10 +1,12 @@
 import { err, ok, ResultAsync } from 'neverthrow';
 import { z, ZodType } from 'zod';
 
+import type { HttpError } from '@/utils/errors.js';
 import { env } from '@/config/env.js';
-import { parseRetryAfter, type HttpError } from '@/utils/errors.js';
+import { parseRetryAfter } from '@/utils/errors.js';
 
-import { ReleaseSchema, Repo, RepoSchema, TagSchema } from './github.schema.js';
+import type { Repo } from './github.schema.js';
+import { ReleaseSchema, RepoSchema, TagSchema } from './github.schema.js';
 
 export type GithubClient = {
   getRepo(owner: string, repo: string): ResultAsync<Repo, HttpError>;

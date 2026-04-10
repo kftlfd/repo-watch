@@ -1,12 +1,13 @@
 import { Job, Worker } from 'bullmq';
 
 import type { ReleaseEmailJob } from '@/queue/release-notifications/release-notifications.types.js';
-import { redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
+import { redis } from '@/redis/redis.js';
 import { sleep } from '@/utils/sleep.js';
 
-import { QUEUE_NAME_REPO_SUBSCRIPTIONS, RepoSubscriptionsJob } from './repo-subscriptions.types.js';
+import type { RepoSubscriptionsJob } from './repo-subscriptions.types.js';
+import { QUEUE_NAME_REPO_SUBSCRIPTIONS } from './repo-subscriptions.types.js';
 
 const BATCH_SIZE = 20;
 const POLL_DELAY_MS = 200;

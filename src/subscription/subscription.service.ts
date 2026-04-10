@@ -1,17 +1,17 @@
 import { err, errAsync, ok, okAsync, Result, ResultAsync } from 'neverthrow';
 
-import { GithubClient } from '@/github/github.client.js';
-import { enqueueConfirmationEmail } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
-import { RepositoryRepo } from '@/repository/repository.repo.js';
-import {
+import type { GithubClient } from '@/github/github.client.js';
+import type { EnqueueConfirmationEmailJobFn } from '@/queue/confirmation-emails/confirmation-emails.types.js';
+import type { RepositoryRepo } from '@/repository/repository.repo.js';
+import type {
   Subscription,
   SubscriptionRepo,
   SubscriptionsListItem,
 } from '@/subscription/subscription.repo.js';
-import { TokenService } from '@/token/token.service.js';
-import { AppError, type HttpError } from '@/utils/errors.js';
+import type { TokenService } from '@/token/token.service.js';
+import type { AppError, HttpError } from '@/utils/errors.js';
 
-import { SubscribeInput } from './subscription.schema.js';
+import type { SubscribeInput } from './subscription.schema.js';
 
 export type SubscriptionService = {
   subscribe(input: SubscribeInput): Promise<Result<void, AppError>>;
@@ -42,12 +42,21 @@ function mapHttpErrorToAppError(error: HttpError): AppError {
   }
 }
 
-export function createSubscriptionService(
-  repositoryRepo: RepositoryRepo,
-  subscriptionRepo: SubscriptionRepo,
-  tokenService: TokenService,
-  githubClient: GithubClient,
-): SubscriptionService {
+type Deps = {
+  repositoryRepo: RepositoryRepo;
+  subscriptionRepo: SubscriptionRepo;
+  tokenService: TokenService;
+  githubClient: GithubClient;
+  enqueueConfirmationEmail: EnqueueConfirmationEmailJobFn;
+};
+
+export function createSubscriptionService({
+  repositoryRepo,
+  subscriptionRepo,
+  tokenService,
+  githubClient,
+  enqueueConfirmationEmail,
+}: Deps): SubscriptionService {
   async function subscribe(input: SubscribeInput) {
     const { email, repoFullName } = input;
     const { owner, name } = parseRepoFullName(repoFullName);

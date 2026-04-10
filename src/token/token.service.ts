@@ -1,9 +1,10 @@
 import { createHmac, randomBytes } from 'crypto';
 import { err, ok, ResultAsync } from 'neverthrow';
 
+import type { Token, TokenRepo } from '@/token/token.repo.js';
+import type { AppError } from '@/utils/errors.js';
 import { env } from '@/config/env.js';
-import { Token, TokenRepo } from '@/token/token.repo.js';
-import { AppError, toAppError } from '@/utils/errors.js';
+import { toAppError } from '@/utils/errors.js';
 
 export type TokenType = 'confirm' | 'unsubscribe';
 

@@ -5,3 +5,5 @@ export type RepoSubscriptionsJob = {
   repoName: string;
   latestTag: string;
 };
+
+export type EnqueueRepoSubscriptionsJobFn = (job: RepoSubscriptionsJob) => Promise<void>;

@@ -1,6 +1,6 @@
-import { Redis } from '@/redis/redis.js';
+import type { Redis } from '@/redis/redis.js';
 
-import { Cache } from './cache.js';
+import type { Cache } from './cache.js';
 
 export function createRedisCache(redis: Redis): Cache {
   return {

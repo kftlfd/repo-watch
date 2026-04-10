@@ -3,10 +3,8 @@ import { Job, Worker } from 'bullmq';
 import type { EmailService } from '@/email/email.service.js';
 import { redis } from '@/redis/redis.js';
 
-import {
-  ConfirmationEmailJob,
-  QUEUE_NAME_CONFIRMATION_EMAILS,
-} from './confirmation-emails.types.js';
+import type { ConfirmationEmailJob } from './confirmation-emails.types.js';
+import { QUEUE_NAME_CONFIRMATION_EMAILS } from './confirmation-emails.types.js';
 
 type ProcessJobFn = (job: Job<ConfirmationEmailJob>) => Promise<void>;
 

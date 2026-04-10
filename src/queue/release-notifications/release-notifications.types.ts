@@ -6,3 +6,5 @@ export type ReleaseEmailJob = {
   repoName: string;
   tag: string;
 };
+
+export type EnqueueReleaseEmailJobFn = (job: ReleaseEmailJob) => Promise<void>;

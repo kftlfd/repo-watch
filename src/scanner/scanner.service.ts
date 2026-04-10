@@ -1,9 +1,9 @@
 import { err, Result } from 'neverthrow';
 
-import { GithubClient } from '@/github/github.client.js';
-import { enqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
-import { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
-import { HttpError } from '@/utils/errors.js';
+import type { GithubClient } from '@/github/github.client.js';
+import type { EnqueueRepoSubscriptionsJobFn } from '@/queue/repo-subscriptions/repo-subscriptions.types.js';
+import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
+import type { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
 const SCAN_INTERVAL_MS = 10 * 60 * 1000;
@@ -11,7 +11,17 @@ const BATCH_SIZE = 20;
 const POLL_DELAY_MS = 200;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
-export function createScannerLoop(repositoryRepo: RepositoryRepo, githubClient: GithubClient) {
+type Deps = {
+  repositoryRepo: RepositoryRepo;
+  githubClient: GithubClient;
+  enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
+};
+
+export function createScannerLoop({
+  repositoryRepo,
+  githubClient,
+  enqueueRepoSubscriptions,
+}: Deps) {
   async function fetchWithRetry(owner: string, name: string): Promise<Result<string, HttpError>> {
     let delayMs = INITIAL_RETRY_DELAY_MS;
 

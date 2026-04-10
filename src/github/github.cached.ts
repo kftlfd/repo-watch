@@ -1,17 +1,22 @@
 import { err, ok, ResultAsync } from 'neverthrow';
 
-import { Cache } from '@/cache/cache.js';
+import type { Cache } from '@/cache/cache.js';
 
-import { type GithubClient } from './github.client.js';
+import type { GithubClient } from './github.client.js';
 import { RepoSchema } from './github.schema.js';
 
 const CACHE_TTL_SECONDS = 600;
+
+type Deps = {
+  base: GithubClient;
+  cache: Cache;
+};
 
 function getCacheKey(request: string, repoId: string): string {
   return `gh-http:${request}:${repoId}`;
 }
 
-export function createCachedGithubClient(base: GithubClient, cache: Cache): GithubClient {
+export function createCachedGithubClient({ base, cache }: Deps): GithubClient {
   return {
     getRepo(owner, name) {
       const cacheKey = getCacheKey('getRepo', `${owner}/${name}`);

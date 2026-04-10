@@ -5,3 +5,5 @@ export type ConfirmationEmailJob = {
   repoName: string;
   confirmUrl: string;
 };
+
+export type EnqueueConfirmationEmailJobFn = (job: ConfirmationEmailJob) => Promise<void>;

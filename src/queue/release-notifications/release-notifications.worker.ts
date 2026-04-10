@@ -1,13 +1,11 @@
 import { Job, Worker } from 'bullmq';
 
 import type { EmailService } from '@/email/email.service.js';
-import { redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
+import { redis } from '@/redis/redis.js';
 
-import {
-  QUEUE_NAME_RELEASE_NOTIFICATIONS,
-  ReleaseEmailJob,
-} from './release-notifications.types.js';
+import type { ReleaseEmailJob } from './release-notifications.types.js';
+import { QUEUE_NAME_RELEASE_NOTIFICATIONS } from './release-notifications.types.js';
 
 type ProcessJobFn = (job: Job<ReleaseEmailJob>) => Promise<void>;
 

@@ -13,6 +13,10 @@ export type Email =
   | { type: 'confirmation'; data: ConfirmationEmailData }
   | { type: 'release'; data: ReleaseEmailData };
 
+export type EmailService = {
+  sendEmail(to: string, email: Email): ResultAsync<void, AppError>;
+};
+
 function renderEmailUnsafe(email: Email) {
   switch (email.type) {
     case 'confirmation':
@@ -33,10 +37,10 @@ const renderEmail = Result.fromThrowable(
 async function mockSendEmail(to: string, email: Email) {
   console.log(`[Email:${email.type}] To: ${to}, Repo: ${email.data.repoName}`);
   await new Promise((resolve) => setTimeout(resolve, 500));
-  return true;
+  return;
 }
 
-export function sendEmail(to: string, email: Email) {
+function sendEmail(to: string, email: Email) {
   const renderedEmail = renderEmail(email);
 
   const ok = renderedEmail.asyncAndThen(() =>
@@ -47,4 +51,10 @@ export function sendEmail(to: string, email: Email) {
   );
 
   return ok;
+}
+
+export function createEmailService(): EmailService {
+  return {
+    sendEmail,
+  };
 }

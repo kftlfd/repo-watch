@@ -7,20 +7,16 @@ import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js
 import type { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
-type Deps = {
-  config: ScannerConfig;
-  repositoryRepo: RepositoryRepo;
-  githubClient: GithubClient;
-  enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
-};
+type FetchWithRetryFn = (owner: string, name: string) => Promise<Result<string, HttpError>>;
 
-export function createScannerLoop({
+export function createFetchWithRetryFn({
   config,
-  repositoryRepo,
   githubClient,
-  enqueueRepoSubscriptions,
-}: Deps) {
-  async function fetchWithRetry(owner: string, name: string): Promise<Result<string, HttpError>> {
+}: {
+  config: ScannerConfig;
+  githubClient: GithubClient;
+}): FetchWithRetryFn {
+  return async function fetchWithRetry(owner, name) {
     let delayMs = config.initialRetryDelay;
 
     while (true) {
@@ -44,9 +40,19 @@ export function createScannerLoop({
       console.log(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
       await sleep(retryDelayMs);
     }
-  }
+  };
+}
 
-  async function processRepository(repo: Repository) {
+export function createProcessRepositoryFn({
+  repositoryRepo,
+  fetchWithRetry,
+  enqueueRepoSubscriptions,
+}: {
+  repositoryRepo: RepositoryRepo;
+  fetchWithRetry: FetchWithRetryFn;
+  enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
+}) {
+  return async function processRepository(repo: Repository) {
     const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
     const now = new Date();
 
@@ -76,7 +82,28 @@ export function createScannerLoop({
     );
 
     console.log(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
-  }
+  };
+}
+
+type Deps = {
+  config: ScannerConfig;
+  repositoryRepo: RepositoryRepo;
+  githubClient: GithubClient;
+  enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
+};
+
+export function createScannerLoop({
+  config,
+  repositoryRepo,
+  githubClient,
+  enqueueRepoSubscriptions,
+}: Deps) {
+  const fetchWithRetry = createFetchWithRetryFn({ config, githubClient });
+  const processRepository = createProcessRepositoryFn({
+    repositoryRepo,
+    fetchWithRetry,
+    enqueueRepoSubscriptions,
+  });
 
   async function startScanner() {
     console.log(

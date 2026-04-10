@@ -4,23 +4,14 @@ import { z, ZodType } from 'zod';
 import { env } from '@/config/env.js';
 import { parseRetryAfter, type HttpError } from '@/utils/errors.js';
 
+import { ReleaseSchema, Repo, RepoSchema, TagSchema } from './github.schema.js';
+
+export type GithubClient = {
+  getRepo(owner: string, repo: string): ResultAsync<Repo, HttpError>;
+  getLatestRelease(owner: string, repo: string): ResultAsync<string, HttpError>;
+};
+
 const BASE_URL = 'https://api.github.com';
-
-const RepoSchema = z.object({
-  full_name: z.string(),
-  owner: z.object({ login: z.string() }),
-  name: z.string(),
-});
-
-const ReleaseSchema = z.object({
-  tag_name: z.string(),
-});
-
-const TagSchema = z.object({
-  name: z.string(),
-});
-
-export type Repo = z.infer<typeof RepoSchema>;
 
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -77,7 +68,7 @@ function mapResponseToError(response: Response): HttpError {
   return { type: 'Unknown', statusCode: response.status, message: response.statusText };
 }
 
-export function getRepo(owner: string, repo: string) {
+function getRepo(owner: string, repo: string) {
   return httpGet(`${BASE_URL}/repos/${owner}/${repo}`, RepoSchema);
 }
 
@@ -96,8 +87,15 @@ function getLatestTag(owner: string, repo: string) {
   });
 }
 
-export function getLatestRelease(owner: string, repo: string) {
+function getLatestRelease(owner: string, repo: string) {
   return getLatestReleaseTag(owner, repo).orElse((error) =>
     error.type === 'NotFound' ? getLatestTag(owner, repo) : err(error),
   );
+}
+
+export function createGithubClient(): GithubClient {
+  return {
+    getRepo,
+    getLatestRelease,
+  };
 }

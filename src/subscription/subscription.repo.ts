@@ -6,12 +6,27 @@ import { repositories, subscriptions } from '@/db/schema.js';
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 
-export async function findById(id: number) {
-  const [row] = await db.select().from(subscriptions).where(eq(subscriptions.id, id)).limit(1);
-  return row ?? null;
-}
+export type SubscriptionsListItem = {
+  email: string;
+  repo: string;
+  confirmed: boolean;
+  last_seen_tag: string | null;
+};
 
-export async function findActiveByEmailAndRepoId(email: string, repositoryId: number) {
+export type SubscriptionRepo = {
+  create(data: NewSubscription): Promise<Subscription>;
+  update(id: number, data: Partial<NewSubscription>): Promise<Subscription | null>;
+  softDelete(id: number): Promise<Subscription | null>;
+  findActiveByEmailAndRepoId(email: string, repositoryId: number): Promise<Subscription | null>;
+  getConfirmedByRepositoryIdBatch(
+    repositoryId: number,
+    cursor: number,
+    batchSize: number,
+  ): Promise<Subscription[]>;
+  getSubscriptionsForEmail(email: string): Promise<SubscriptionsListItem[]>;
+};
+
+async function findActiveByEmailAndRepoId(email: string, repositoryId: number) {
   const [row] = await db
     .select()
     .from(subscriptions)
@@ -26,27 +41,7 @@ export async function findActiveByEmailAndRepoId(email: string, repositoryId: nu
   return row ?? null;
 }
 
-export async function findActiveByRepositoryId(repositoryId: number) {
-  return db
-    .select()
-    .from(subscriptions)
-    .where(and(eq(subscriptions.repositoryId, repositoryId), isNull(subscriptions.removedAt)));
-}
-
-export async function findConfirmedByRepositoryId(repositoryId: number) {
-  return db
-    .select()
-    .from(subscriptions)
-    .where(
-      and(
-        eq(subscriptions.repositoryId, repositoryId),
-        isNotNull(subscriptions.confirmedAt),
-        isNull(subscriptions.removedAt),
-      ),
-    );
-}
-
-export async function getConfirmedByRepositoryIdBatch(
+async function getConfirmedByRepositoryIdBatch(
   repositoryId: number,
   cursor: number,
   batchSize: number,
@@ -66,12 +61,13 @@ export async function getConfirmedByRepositoryIdBatch(
     .limit(batchSize);
 }
 
-export async function create(data: NewSubscription) {
+async function create(data: NewSubscription) {
   const [row] = await db.insert(subscriptions).values(data).returning();
-  return row ?? null;
+  if (!row) throw new Error('DB error: failed to create subscription');
+  return row;
 }
 
-export async function update(id: number, data: Partial<NewSubscription>) {
+async function update(id: number, data: Partial<NewSubscription>) {
   const [row] = await db
     .update(subscriptions)
     .set(data)
@@ -80,7 +76,7 @@ export async function update(id: number, data: Partial<NewSubscription>) {
   return row ?? null;
 }
 
-export async function softDelete(id: number) {
+async function softDelete(id: number) {
   const [row] = await db
     .update(subscriptions)
     .set({ removedAt: new Date() })
@@ -89,14 +85,7 @@ export async function softDelete(id: number) {
   return row ?? null;
 }
 
-export interface SubscriptionsListItem {
-  email: string;
-  repo: string;
-  confirmed: boolean;
-  last_seen_tag: string | null;
-}
-
-export async function getSubscriptionsForEmail(email: string): Promise<SubscriptionsListItem[]> {
+async function getSubscriptionsForEmail(email: string): Promise<SubscriptionsListItem[]> {
   const rows = await db
     .select({
       subscription: subscriptions,
@@ -112,4 +101,15 @@ export async function getSubscriptionsForEmail(email: string): Promise<Subscript
     confirmed: row.subscription.confirmedAt !== null,
     last_seen_tag: row.repository.lastSeenTag,
   }));
+}
+
+export function createSubscriptionRepo(): SubscriptionRepo {
+  return {
+    create,
+    update,
+    softDelete,
+    findActiveByEmailAndRepoId,
+    getConfirmedByRepositoryIdBatch,
+    getSubscriptionsForEmail,
+  };
 }

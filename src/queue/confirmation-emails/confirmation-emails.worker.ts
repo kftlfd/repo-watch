@@ -2,6 +2,7 @@ import { Job, Worker } from 'bullmq';
 
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
+import type { Logger } from '@/logger/logger.js';
 import { redis } from '@/redis/redis.js';
 
 import type { ConfirmationEmailJob } from './confirmation-emails.types.js';
@@ -9,11 +10,12 @@ import { QUEUE_NAME_CONFIRMATION_EMAILS } from './confirmation-emails.types.js';
 
 type ProcessJobFn = (job: Job<ConfirmationEmailJob>) => Promise<void>;
 
-type Deps = {
+type ProcessJobDeps = {
+  log: Logger;
   emailService: EmailService;
 };
 
-function createProcessConfirmationEmailJob({ emailService }: Deps): ProcessJobFn {
+function createProcessConfirmationEmailJob({ log, emailService }: ProcessJobDeps): ProcessJobFn {
   return async function processJob(job) {
     const { email, repoName, confirmUrl } = job.data;
 
@@ -27,16 +29,24 @@ function createProcessConfirmationEmailJob({ emailService }: Deps): ProcessJobFn
 
     if (sendResult.isErr()) {
       const error = sendResult.error;
-      console.error(`Failed to send confirmation email to ${email}:`, error.message);
+      log.error({ error }, `Failed to send confirmation email to ${email}`);
       throw new Error(error.message);
     }
 
-    console.log(`Sent confirmation email for ${repoName} to ${email}`);
+    log.info(`Sent confirmation email for ${repoName} to ${email}`);
   };
 }
 
-export function createConfirmationEmailsWorker(deps: Deps, config: WorkerConfig) {
-  const processJob = createProcessConfirmationEmailJob(deps);
+type Deps = {
+  config: WorkerConfig;
+  logger: Logger;
+  emailService: EmailService;
+};
+
+export function createConfirmationEmailsWorker({ config, logger, emailService }: Deps) {
+  const log = logger.child({ module: 'confirmation-emails.worker' });
+
+  const processJob = createProcessConfirmationEmailJob({ log, emailService });
 
   const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
     connection: redis,
@@ -49,11 +59,11 @@ export function createConfirmationEmailsWorker(deps: Deps, config: WorkerConfig)
 
   worker.on('failed', (job, error) => {
     const jobId = job?.id ?? 'unknown';
-    console.error(`Job ${jobId} failed:`, error.message);
+    log.error({ error }, `Job ${jobId} failed`);
   });
 
   worker.on('error', (error) => {
-    console.error('Worker error:', error);
+    log.error({ error }, 'Worker error:');
   });
 
   return worker;

@@ -2,6 +2,7 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { Cache } from '@/cache/cache.js';
 import type { GithubClientConfig } from '@/config/config.js';
+import type { Logger } from '@/logger/logger.js';
 
 import type { GithubClient } from './github.client.js';
 import { RepoSchema } from './github.schema.js';
@@ -10,13 +11,16 @@ type Deps = {
   config: GithubClientConfig;
   base: GithubClient;
   cache: Cache;
+  logger: Logger;
 };
 
 function getCacheKey(request: string, repoId: string): string {
   return `gh-http:${request}:${repoId}`;
 }
 
-export function createCachedGithubClient({ config, base, cache }: Deps): GithubClient {
+export function createCachedGithubClient({ config, base, cache, logger }: Deps): GithubClient {
+  const log = logger.child({ module: 'github.cached' });
+
   return {
     getRepo(owner, name) {
       const cacheKey = getCacheKey('getRepo', `${owner}/${name}`);
@@ -36,7 +40,7 @@ export function createCachedGithubClient({ config, base, cache }: Deps): GithubC
           cache
             .set(cacheKey, JSON.stringify(val), config.cacheTtlSeconds)
             .catch((error: unknown) => {
-              console.error('Cache write error:', error);
+              log.warn({ error }, 'Cache write error');
             });
         }),
       );
@@ -53,7 +57,7 @@ export function createCachedGithubClient({ config, base, cache }: Deps): GithubC
       return cacheVal.orElse(() =>
         base.getLatestRelease(owner, name).andTee((val) => {
           cache.set(cacheKey, val, config.cacheTtlSeconds).catch((error: unknown) => {
-            console.error('Cache write error:', error);
+            log.warn({ error }, 'Cache write error');
           });
         }),
       );

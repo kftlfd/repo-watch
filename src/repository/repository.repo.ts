@@ -3,6 +3,7 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { Cache } from '@/cache/cache.js';
 import type { RepositoryRepoConfig } from '@/config/config.js';
+import type { Logger } from '@/logger/logger.js';
 import type { AppError } from '@/utils/errors.js';
 import { db } from '@/db/client.js';
 import { repositories } from '@/db/schema.js';
@@ -65,9 +66,12 @@ function getCacheKey(repoId: number): string {
 type Deps = {
   config: RepositoryRepoConfig;
   cache: Cache;
+  logger: Logger;
 };
 
-export function createRepositoryRepo({ config, cache }: Deps): RepositoryRepo {
+export function createRepositoryRepo({ config, cache, logger }: Deps): RepositoryRepo {
+  const log = logger.child({ module: 'repository.repo' });
+
   function getCacheLatestTag(cacheKey: string) {
     return ResultAsync.fromPromise(cache.get(cacheKey), () => 'CACHE_ERROR' as const).andThen(
       (val) => (val ? ok(val) : err('CACHE_MISS')),
@@ -91,8 +95,8 @@ export function createRepositoryRepo({ config, cache }: Deps): RepositoryRepo {
     const cacheKey = getCacheKey(repoId);
     return getCacheLatestTag(cacheKey).orElse(() =>
       getDBLatestTag(repoId).andTee((tag) => {
-        setCacheLatestTag(cacheKey, tag).catch((e: unknown) => {
-          console.error('Cache write failed:', e);
+        setCacheLatestTag(cacheKey, tag).catch((error: unknown) => {
+          log.warn({ error }, 'Cache write failed:');
         });
       }),
     );
@@ -108,8 +112,8 @@ export function createRepositoryRepo({ config, cache }: Deps): RepositoryRepo {
       .where(eq(repositories.id, repoId));
 
     if (lastSeenTag) {
-      await setCacheLatestTag(getCacheKey(repoId), lastSeenTag).catch((err: unknown) => {
-        console.error('Cache write error:', err);
+      await setCacheLatestTag(getCacheKey(repoId), lastSeenTag).catch((error: unknown) => {
+        log.warn({ error }, 'Cache write error:');
       });
     }
   }

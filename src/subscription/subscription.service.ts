@@ -1,6 +1,7 @@
 import { err, errAsync, ok, okAsync, Result, ResultAsync } from 'neverthrow';
 
 import type { GithubClient } from '@/github/github.client.js';
+import type { Logger } from '@/logger/logger.js';
 import type { EnqueueConfirmationEmailJobFn } from '@/queue/confirmation-emails/confirmation-emails.types.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type {
@@ -47,6 +48,7 @@ type Deps = {
   subscriptionRepo: SubscriptionRepo;
   tokenService: TokenService;
   githubClient: GithubClient;
+  logger: Logger;
   enqueueConfirmationEmail: EnqueueConfirmationEmailJobFn;
 };
 
@@ -55,8 +57,11 @@ export function createSubscriptionService({
   subscriptionRepo,
   tokenService,
   githubClient,
+  logger,
   enqueueConfirmationEmail,
 }: Deps): SubscriptionService {
+  const log = logger.child({ module: 'subscription.service' });
+
   async function subscribe(input: SubscribeInput) {
     const { email, repoFullName } = input;
     const { owner, name } = parseRepoFullName(repoFullName);
@@ -200,8 +205,8 @@ export function createSubscriptionService({
       )
       .andTee(() => {
         tokenResult.andTee((token) => {
-          tokenService.deleteToken(token.id).catch((err: unknown) => {
-            console.error('DB Error: failed to delete token', err);
+          tokenService.deleteToken(token.id).catch((error: unknown) => {
+            log.error({ error }, 'DB Error: failed to delete token');
           });
         });
       })
@@ -229,8 +234,8 @@ export function createSubscriptionService({
       )
       .andTee(() => {
         tokenResult.andTee((token) => {
-          tokenService.deleteToken(token.id).catch((err: unknown) => {
-            console.error('DB Error: failed to delete token', err);
+          tokenService.deleteToken(token.id).catch((error: unknown) => {
+            log.error({ error }, 'DB Error: failed to delete token');
           });
         });
       })

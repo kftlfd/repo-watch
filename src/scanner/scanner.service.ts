@@ -2,6 +2,7 @@ import { err, Result } from 'neverthrow';
 
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
+import type { Logger } from '@/logger/logger.js';
 import type { EnqueueRepoSubscriptionsJobFn } from '@/queue/repo-subscriptions/repo-subscriptions.types.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import type { HttpError } from '@/utils/errors.js';
@@ -10,9 +11,11 @@ import { sleep } from '@/utils/sleep.js';
 type FetchWithRetryFn = (owner: string, name: string) => Promise<Result<string, HttpError>>;
 
 export function createFetchWithRetryFn({
+  log,
   config,
   githubClient,
 }: {
+  log: Logger;
   config: ScannerConfig;
   githubClient: GithubClient;
 }): FetchWithRetryFn {
@@ -37,17 +40,19 @@ export function createFetchWithRetryFn({
         delayMs *= 2;
       }
 
-      console.log(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
+      log.info(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
       await sleep(retryDelayMs);
     }
   };
 }
 
 export function createProcessRepositoryFn({
+  log,
   repositoryRepo,
   fetchWithRetry,
   enqueueRepoSubscriptions,
 }: {
+  log: Logger;
   repositoryRepo: RepositoryRepo;
   fetchWithRetry: FetchWithRetryFn;
   enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
@@ -60,7 +65,10 @@ export function createProcessRepositoryFn({
 
     if (releaseResult.isErr()) {
       const error = releaseResult.error;
-      console.error(`Failed to fetch release for ${fullName}:`, error.type);
+      log.error(
+        { error, repoId, repoFullName: fullName },
+        `Failed to fetch release for ${fullName}`,
+      );
       await repositoryRepo.updateAfterScan(repoId, now);
       return;
     }
@@ -68,7 +76,7 @@ export function createProcessRepositoryFn({
     const latestTag = releaseResult.value;
 
     if (latestTag === lastSeenTag) {
-      console.log(`No new release for ${fullName}`);
+      log.info(`No new releases for ${fullName}`);
       await repositoryRepo.updateAfterScan(repoId, now);
       return;
     }
@@ -76,12 +84,12 @@ export function createProcessRepositoryFn({
     await repositoryRepo.updateAfterScan(repoId, now, latestTag);
 
     await enqueueRepoSubscriptions({ repoId, repoName: fullName, latestTag }).catch(
-      (err: unknown) => {
-        console.error('Enqueue error', err);
+      (error: unknown) => {
+        log.error({ error }, 'Enqueue error');
       },
     );
 
-    console.log(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
+    log.info(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
   };
 }
 
@@ -89,6 +97,7 @@ type Deps = {
   config: ScannerConfig;
   repositoryRepo: RepositoryRepo;
   githubClient: GithubClient;
+  logger: Logger;
   enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
 };
 
@@ -96,17 +105,21 @@ export function createScannerLoop({
   config,
   repositoryRepo,
   githubClient,
+  logger,
   enqueueRepoSubscriptions,
 }: Deps) {
-  const fetchWithRetry = createFetchWithRetryFn({ config, githubClient });
+  const log = logger.child({ module: 'scanner.service' });
+
+  const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient });
   const processRepository = createProcessRepositoryFn({
+    log,
     repositoryRepo,
     fetchWithRetry,
     enqueueRepoSubscriptions,
   });
 
   async function startScanner() {
-    console.log(
+    log.info(
       `Scanner started (interval: ${config.scanIntervalMs.toString()}ms, batch: ${config.batchSize.toString()})`,
     );
 
@@ -119,7 +132,7 @@ export function createScannerLoop({
           await sleep(config.pollDelayMs);
         }
       } catch (error) {
-        console.error('Scanner error:', error);
+        log.error({ error }, 'Scanner error:');
       }
 
       await sleep(config.scanIntervalMs);

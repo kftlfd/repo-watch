@@ -1,6 +1,7 @@
 import { Job, Worker } from 'bullmq';
 
 import type { RepoSubJobConfig, WorkerConfig } from '@/config/config.js';
+import type { Logger } from '@/logger/logger.js';
 import type { ReleaseEmailJob } from '@/queue/release-notifications/release-notifications.types.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
@@ -12,8 +13,9 @@ import { QUEUE_NAME_REPO_SUBSCRIPTIONS } from './repo-subscriptions.types.js';
 
 type ProcessJobFn = (job: Job<RepoSubscriptionsJob>) => Promise<void>;
 
-type Deps = {
+type ProcessJobDeps = {
   config: RepoSubJobConfig;
+  log: Logger;
   repositoryRepo: RepositoryRepo;
   subscriptionRepo: SubscriptionRepo;
   enqueueReleaseEmail: (job: ReleaseEmailJob) => Promise<void>;
@@ -21,10 +23,11 @@ type Deps = {
 
 function createProcessRepoSubscriptionJob({
   config,
+  log,
   repositoryRepo,
   subscriptionRepo,
   enqueueReleaseEmail,
-}: Deps): ProcessJobFn {
+}: ProcessJobDeps): ProcessJobFn {
   return async function processJob(job) {
     const { repoId, repoName, latestTag } = job.data;
 
@@ -32,7 +35,7 @@ function createProcessRepoSubscriptionJob({
 
     if (latestTagResult.isErr()) {
       const error = latestTagResult.error;
-      console.error(`Failed to get latest tag for repo ${String(repoId)}:`, error.message);
+      log.error({ error }, `Failed to get latest tag for repo ${String(repoId)}`);
       throw new Error(error.message);
     }
 
@@ -53,9 +56,9 @@ function createProcessRepoSubscriptionJob({
 
       if (subscriptionsBatch.length < 1) {
         if (cursor === -1) {
-          console.log(`no subscribers, marking repo as inactive`);
-          await repositoryRepo.update(repoId, { isActive: false }).catch((err: unknown) => {
-            console.error('DB error:', err);
+          log.info(`no subscribers for ${repoName}, marking repo as inactive`);
+          await repositoryRepo.update(repoId, { isActive: false }).catch((error: unknown) => {
+            log.error({ error }, 'DB error');
           });
         }
         break;
@@ -66,8 +69,8 @@ function createProcessRepoSubscriptionJob({
           .then(() => {
             total++;
           })
-          .catch((err: unknown) => {
-            console.error('Queue error:', err);
+          .catch((error: unknown) => {
+            log.error({ error }, 'Queue error');
           });
       }
 
@@ -75,12 +78,36 @@ function createProcessRepoSubscriptionJob({
       cursor = subscriptionsBatch.at(-1)?.id ?? cursor + config.batchSize;
     }
 
-    console.log(`New release for ${repoName}@${latestTag}, enqueued ${total.toString()} emails`);
+    log.info(`New release for ${repoName}@${latestTag}, enqueued ${total.toString()} emails`);
   };
 }
 
-export function createRepoSubscriptionsWorker(deps: Deps, config: WorkerConfig) {
-  const processJob = createProcessRepoSubscriptionJob(deps);
+type Deps = {
+  config: WorkerConfig;
+  jobConfig: RepoSubJobConfig;
+  logger: Logger;
+  repositoryRepo: RepositoryRepo;
+  subscriptionRepo: SubscriptionRepo;
+  enqueueReleaseEmail: (job: ReleaseEmailJob) => Promise<void>;
+};
+
+export function createRepoSubscriptionsWorker({
+  config,
+  jobConfig,
+  logger,
+  repositoryRepo,
+  subscriptionRepo,
+  enqueueReleaseEmail,
+}: Deps) {
+  const log = logger.child({ module: 'repo-subscriptions.worker' });
+
+  const processJob = createProcessRepoSubscriptionJob({
+    log,
+    config: jobConfig,
+    repositoryRepo,
+    subscriptionRepo,
+    enqueueReleaseEmail,
+  });
 
   const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
     connection: redis,
@@ -93,11 +120,11 @@ export function createRepoSubscriptionsWorker(deps: Deps, config: WorkerConfig) 
 
   worker.on('failed', (job, error) => {
     const jobId = job?.id ?? 'unknown';
-    console.error(`Job ${jobId} failed:`, error.message);
+    log.error({ error }, `Job ${jobId} failed`);
   });
 
   worker.on('error', (error) => {
-    console.error('Worker error:', error);
+    log.error({ error }, 'Worker error');
   });
 
   return worker;

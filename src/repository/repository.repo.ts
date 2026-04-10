@@ -1,10 +1,11 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import { err, ok, ResultAsync } from 'neverthrow';
 
+import type { Cache } from '@/cache/cache.js';
+import type { RepositoryRepoConfig } from '@/config/config.js';
 import type { AppError } from '@/utils/errors.js';
 import { db } from '@/db/client.js';
 import { repositories } from '@/db/schema.js';
-import { redis } from '@/redis/redis.js';
 import { toAppError } from '@/utils/errors.js';
 
 export type Repository = typeof repositories.$inferSelect;
@@ -57,60 +58,62 @@ async function findBatchForScanning(limit: number) {
     .limit(limit);
 }
 
-const TAG_TTL_SECONDS = 600;
-
 function getCacheKey(repoId: number): string {
   return `repo:${repoId.toString()}:latest_tag`;
 }
 
-function getCacheLatestTag(repoId: number) {
-  const cacheKey = getCacheKey(repoId);
-  return ResultAsync.fromPromise(redis.get(cacheKey), toAppError).andThen((val) =>
-    val ? ok(val) : err({ type: 'NotFound', message: 'Cache miss' } as AppError),
-  );
-}
+type Deps = {
+  config: RepositoryRepoConfig;
+  cache: Cache;
+};
 
-async function setCacheLatestTag(repoId: number, tag: string) {
-  const cacheKey = getCacheKey(repoId);
-  await redis.setex(cacheKey, TAG_TTL_SECONDS, tag);
-}
+export function createRepositoryRepo({ config, cache }: Deps): RepositoryRepo {
+  function getCacheLatestTag(cacheKey: string) {
+    return ResultAsync.fromPromise(cache.get(cacheKey), () => 'CACHE_ERROR' as const).andThen(
+      (val) => (val ? ok(val) : err('CACHE_MISS')),
+    );
+  }
 
-function getDBLatestTag(repoId: number) {
-  return ResultAsync.fromPromise(findById(repoId), toAppError).andThen((repo) => {
-    const tag = repo?.lastSeenTag;
-    return tag
-      ? ok(tag)
-      : err({ type: 'NotFound', message: 'No tag found for repository' } as AppError);
-  });
-}
+  async function setCacheLatestTag(cacheKey: string, tag: string) {
+    await cache.set(cacheKey, tag, config.tagCacheTtlSeconds);
+  }
 
-function getLatestTag(repoId: number) {
-  return getCacheLatestTag(repoId).orElse(() =>
-    getDBLatestTag(repoId).andTee((tag) => {
-      setCacheLatestTag(repoId, tag).catch((e: unknown) => {
-        console.error('Cache write failed:', e);
-      });
-    }),
-  );
-}
-
-async function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
-  await db
-    .update(repositories)
-    .set({
-      lastCheckedAt: lastCheckedAt,
-      ...(lastSeenTag && { lastSeenTag }),
-    })
-    .where(eq(repositories.id, repoId));
-
-  if (lastSeenTag) {
-    await redis.set(getCacheKey(repoId), lastSeenTag).catch((err: unknown) => {
-      console.error('Cache write error:', err);
+  function getDBLatestTag(repoId: number) {
+    return ResultAsync.fromPromise(findById(repoId), toAppError).andThen((repo) => {
+      const tag = repo?.lastSeenTag;
+      return tag
+        ? ok(tag)
+        : err({ type: 'NotFound', message: 'No tag found for repository' } as AppError);
     });
   }
-}
 
-export function createRepositoryRepo(): RepositoryRepo {
+  function getLatestTag(repoId: number) {
+    const cacheKey = getCacheKey(repoId);
+    return getCacheLatestTag(cacheKey).orElse(() =>
+      getDBLatestTag(repoId).andTee((tag) => {
+        setCacheLatestTag(cacheKey, tag).catch((e: unknown) => {
+          console.error('Cache write failed:', e);
+        });
+      }),
+    );
+  }
+
+  async function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
+    await db
+      .update(repositories)
+      .set({
+        lastCheckedAt: lastCheckedAt,
+        ...(lastSeenTag && { lastSeenTag }),
+      })
+      .where(eq(repositories.id, repoId));
+
+    if (lastSeenTag) {
+      await setCacheLatestTag(getCacheKey(repoId), lastSeenTag).catch((err: unknown) => {
+        console.error('Cache write error:', err);
+      });
+    }
+  }
+
   return {
     create,
     update,

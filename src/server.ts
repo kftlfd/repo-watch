@@ -29,7 +29,7 @@ const enqueueRepoSubscriptions = createEnqueueRepoSubscriptions(
   config.queues.repoSubscriptions.queue,
 );
 const cache = createRedisCache(redis);
-const repositoryRepo = createRepositoryRepo();
+const repositoryRepo = createRepositoryRepo({ config: config.repositoryRepo, cache });
 const subscriptionRepo = createSubscriptionRepo();
 const tokenRepo = createTokenRepo();
 const emailService = createEmailService();

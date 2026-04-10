@@ -3,6 +3,10 @@ export type GithubClientConfig = {
   cacheTtlSeconds: number;
 };
 
+export type RepositoryRepoConfig = {
+  tagCacheTtlSeconds: number;
+};
+
 export type ScannerConfig = {
   scanIntervalMs: number;
   batchSize: number;
@@ -41,6 +45,7 @@ export type RepoSubJobConfig = {
 
 type Config = {
   githubClient: GithubClientConfig;
+  repositoryRepo: RepositoryRepoConfig;
   scanner: ScannerConfig;
   tokenService: TokenServiceConfig;
   queues: {
@@ -54,6 +59,9 @@ export const config: Config = {
   githubClient: {
     baseUrl: 'https://api.github.com',
     cacheTtlSeconds: 600,
+  },
+  repositoryRepo: {
+    tagCacheTtlSeconds: 10 * 60,
   },
   scanner: {
     scanIntervalMs: 10 * 60 * 1000,

@@ -1,7 +1,7 @@
 import { Job, Worker } from 'bullmq';
 
-import { redis } from '@/db/redis.js';
 import { enqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
+import { redis } from '@/redis/redis.js';
 import * as repositoryRepo from '@/repository/repository.repo.js';
 import * as subscriptionRepo from '@/subscription/subscription.repo.js';
 import { sleep } from '@/utils/sleep.js';

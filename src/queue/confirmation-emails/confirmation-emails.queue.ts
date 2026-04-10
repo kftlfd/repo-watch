@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq';
 
-import { redis } from '@/db/redis.js';
+import { redis } from '@/redis/redis.js';
 
 import {
   ConfirmationEmailJob,

@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq';
 
-import { redis } from '@/db/redis.js';
+import { redis } from '@/redis/redis.js';
 
 import { QUEUE_NAME_REPO_SUBSCRIPTIONS, RepoSubscriptionsJob } from './repo-subscriptions.types.js';
 

@@ -1,7 +1,7 @@
 import { Job, Worker } from 'bullmq';
 
-import { redis } from '@/db/redis.js';
 import { sendEmail } from '@/email/email.service.js';
+import { redis } from '@/redis/redis.js';
 
 import {
   ConfirmationEmailJob,

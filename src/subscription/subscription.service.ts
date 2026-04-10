@@ -8,7 +8,7 @@ import {
   SubscriptionRepo,
   SubscriptionsListItem,
 } from '@/subscription/subscription.repo.js';
-import * as tokenService from '@/token/token.service.js';
+import { TokenService } from '@/token/token.service.js';
 import { AppError, type HttpError } from '@/utils/errors.js';
 
 import { SubscribeInput } from './subscription.schema.js';
@@ -45,6 +45,7 @@ function mapHttpErrorToAppError(error: HttpError): AppError {
 export function createSubscriptionService(
   repositoryRepo: RepositoryRepo,
   subscriptionRepo: SubscriptionRepo,
+  tokenService: TokenService,
   githubClient: GithubClient,
 ): SubscriptionService {
   async function subscribe(input: SubscribeInput) {

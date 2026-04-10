@@ -2,8 +2,8 @@ import { Job, Worker } from 'bullmq';
 
 import { enqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
 import { redis } from '@/redis/redis.js';
-import * as repositoryRepo from '@/repository/repository.repo.js';
-import * as subscriptionRepo from '@/subscription/subscription.repo.js';
+import { RepositoryRepo } from '@/repository/repository.repo.js';
+import { SubscriptionRepo } from '@/subscription/subscription.repo.js';
 import { sleep } from '@/utils/sleep.js';
 
 import { QUEUE_NAME_REPO_SUBSCRIPTIONS, RepoSubscriptionsJob } from './repo-subscriptions.types.js';
@@ -11,60 +11,72 @@ import { QUEUE_NAME_REPO_SUBSCRIPTIONS, RepoSubscriptionsJob } from './repo-subs
 const BATCH_SIZE = 20;
 const POLL_DELAY_MS = 200;
 
-async function processJob(job: Job<RepoSubscriptionsJob>) {
-  const { repoId, repoName, latestTag } = job.data;
+type ProcessJobFn = (job: Job<RepoSubscriptionsJob>) => Promise<void>;
 
-  const latestTagResult = await repositoryRepo.getLatestTag(repoId);
+function createProcessRepoSubscriptionJob(
+  repositoryRepo: RepositoryRepo,
+  subscriptionRepo: SubscriptionRepo,
+): ProcessJobFn {
+  return async function processJob(job) {
+    const { repoId, repoName, latestTag } = job.data;
 
-  if (latestTagResult.isErr()) {
-    const error = latestTagResult.error;
-    console.error(`Failed to get latest tag for repo ${String(repoId)}:`, error.message);
-    throw new Error(error.message);
-  }
+    const latestTagResult = await repositoryRepo.getLatestTag(repoId);
 
-  if (latestTagResult.value != latestTag) {
-    // drop outdated job
-    return;
-  }
+    if (latestTagResult.isErr()) {
+      const error = latestTagResult.error;
+      console.error(`Failed to get latest tag for repo ${String(repoId)}:`, error.message);
+      throw new Error(error.message);
+    }
 
-  let cursor = -1;
-  let total = 0;
+    if (latestTagResult.value != latestTag) {
+      // drop outdated job
+      return;
+    }
 
-  while (true) {
-    const subscriptionsBatch = await subscriptionRepo.getConfirmedByRepositoryIdBatch(
-      repoId,
-      cursor,
-      BATCH_SIZE,
-    );
+    let cursor = -1;
+    let total = 0;
 
-    if (subscriptionsBatch.length < 1) {
-      if (cursor === -1) {
-        console.log(`no subscribers, marking repo as inactive`);
-        await repositoryRepo.update(repoId, { isActive: false }).catch((err: unknown) => {
-          console.error('DB error:', err);
-        });
+    while (true) {
+      const subscriptionsBatch = await subscriptionRepo.getConfirmedByRepositoryIdBatch(
+        repoId,
+        cursor,
+        BATCH_SIZE,
+      );
+
+      if (subscriptionsBatch.length < 1) {
+        if (cursor === -1) {
+          console.log(`no subscribers, marking repo as inactive`);
+          await repositoryRepo.update(repoId, { isActive: false }).catch((err: unknown) => {
+            console.error('DB error:', err);
+          });
+        }
+        break;
       }
-      break;
+
+      for (const sub of subscriptionsBatch) {
+        await enqueueReleaseEmail({ repoId, repoName, email: sub.email, tag: latestTag })
+          .then(() => {
+            total++;
+          })
+          .catch((err: unknown) => {
+            console.error('Queue error:', err);
+          });
+      }
+
+      await sleep(POLL_DELAY_MS);
+      cursor = subscriptionsBatch.at(-1)?.id ?? cursor + BATCH_SIZE;
     }
 
-    for (const sub of subscriptionsBatch) {
-      await enqueueReleaseEmail({ repoId, repoName, email: sub.email, tag: latestTag })
-        .then(() => {
-          total++;
-        })
-        .catch((err: unknown) => {
-          console.error('Queue error:', err);
-        });
-    }
-
-    await sleep(POLL_DELAY_MS);
-    cursor = subscriptionsBatch.at(-1)?.id ?? cursor + BATCH_SIZE;
-  }
-
-  console.log(`New release for ${repoName}@${latestTag}, enqueued ${total.toString()} emails`);
+    console.log(`New release for ${repoName}@${latestTag}, enqueued ${total.toString()} emails`);
+  };
 }
 
-export function startRepoSubscriptionsWorker() {
+export function createRepoSubscriptionsWorker(
+  repositoryRepo: RepositoryRepo,
+  subscriptionRepo: SubscriptionRepo,
+) {
+  const processJob = createProcessRepoSubscriptionJob(repositoryRepo, subscriptionRepo);
+
   const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
     connection: redis,
     concurrency: 2,

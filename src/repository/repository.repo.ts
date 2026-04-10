@@ -9,12 +9,21 @@ import { AppError, toAppError } from '@/utils/errors.js';
 export type Repository = typeof repositories.$inferSelect;
 export type NewRepository = typeof repositories.$inferInsert;
 
-export async function findById(id: number) {
+export type RepositoryRepo = {
+  create(data: NewRepository): Promise<Repository>;
+  update(id: number, data: Partial<NewRepository>): Promise<Repository | null>;
+  findByFullName(fullName: string): Promise<Repository | null>;
+  getLatestTag(repoId: number): ResultAsync<string, AppError>;
+  findBatchForScanning(limit: number): Promise<Repository[]>;
+  updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string): Promise<void>;
+};
+
+async function findById(id: number) {
   const [row] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1);
   return row ?? null;
 }
 
-export async function findByFullName(fullName: string) {
+async function findByFullName(fullName: string) {
   const [row] = await db
     .select()
     .from(repositories)
@@ -23,12 +32,13 @@ export async function findByFullName(fullName: string) {
   return row ?? null;
 }
 
-export async function create(data: NewRepository) {
+async function create(data: NewRepository) {
   const [row] = await db.insert(repositories).values(data).returning();
+  if (!row) throw new Error('DB error: failed to create repository');
   return row;
 }
 
-export async function update(id: number, data: Partial<NewRepository>) {
+async function update(id: number, data: Partial<NewRepository>) {
   const [row] = await db
     .update(repositories)
     .set({ ...data, updatedAt: new Date() })
@@ -37,7 +47,7 @@ export async function update(id: number, data: Partial<NewRepository>) {
   return row ?? null;
 }
 
-export async function findBatchForScanning(limit: number) {
+async function findBatchForScanning(limit: number) {
   return db
     .select()
     .from(repositories)
@@ -59,7 +69,7 @@ function getCacheLatestTag(repoId: number) {
   );
 }
 
-export async function setCacheLatestTag(repoId: number, tag: string) {
+async function setCacheLatestTag(repoId: number, tag: string) {
   const cacheKey = getCacheKey(repoId);
   await redis.setex(cacheKey, TAG_TTL_SECONDS, tag);
 }
@@ -73,7 +83,7 @@ function getDBLatestTag(repoId: number) {
   });
 }
 
-export function getLatestTag(repoId: number) {
+function getLatestTag(repoId: number) {
   return getCacheLatestTag(repoId).orElse(() =>
     getDBLatestTag(repoId).andTee((tag) => {
       setCacheLatestTag(repoId, tag).catch((e: unknown) => {
@@ -83,7 +93,7 @@ export function getLatestTag(repoId: number) {
   );
 }
 
-export async function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
+async function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
   await db
     .update(repositories)
     .set({
@@ -97,4 +107,15 @@ export async function updateAfterScan(repoId: number, lastCheckedAt: Date, lastS
       console.error('Cache write error:', err);
     });
   }
+}
+
+export function createRepositoryRepo(): RepositoryRepo {
+  return {
+    create,
+    update,
+    findByFullName,
+    getLatestTag,
+    findBatchForScanning,
+    updateAfterScan,
+  };
 }

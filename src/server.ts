@@ -6,6 +6,9 @@ import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
 import { createConfirmationEmailsWorker } from '@/queue/confirmation-emails/confirmation-emails.worker.js';
+import { enqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
+import { createReleaseNotificationsWorker } from '@/queue/release-notifications/release-notifications.worker.js';
+import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
 import { redis } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
 import { createScannerLoop } from '@/scanner/scanner.service.js';
@@ -14,9 +17,6 @@ import { createSubscriptionRepo } from '@/subscription/subscription.repo.js';
 import { createSubscriptionService } from '@/subscription/subscription.service.js';
 import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
-
-import { createReleaseNotificationsWorker } from './queue/release-notifications/release-notifications.worker.js';
-import { createRepoSubscriptionsWorker } from './queue/repo-subscriptions/repo-subscriptions.worker.js';
 
 const cache = createRedisCache(redis);
 const repoRepo = createRepositoryRepo();
@@ -35,11 +35,17 @@ startScannerLoop().catch((err: unknown) => {
 });
 
 const createWorkers = () => ({
-  confirmEmails: Array.from({ length: 1 }, () => createConfirmationEmailsWorker(emailService)),
+  confirmEmails: Array.from({ length: 1 }, () => createConfirmationEmailsWorker({ emailService })),
   releaseEmails: Array.from({ length: 1 }, () =>
-    createReleaseNotificationsWorker(emailService, repoRepo),
+    createReleaseNotificationsWorker({ emailService, repositoryRepo: repoRepo }),
   ),
-  repoSubs: Array.from({ length: 1 }, () => createRepoSubscriptionsWorker(repoRepo, subsRepo)),
+  repoSubs: Array.from({ length: 1 }, () =>
+    createRepoSubscriptionsWorker({
+      repositoryRepo: repoRepo,
+      subscriptionRepo: subsRepo,
+      enqueueReleaseEmail,
+    }),
+  ),
 });
 createWorkers();
 

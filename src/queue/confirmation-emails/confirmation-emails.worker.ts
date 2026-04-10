@@ -1,6 +1,6 @@
 import { Job, Worker } from 'bullmq';
 
-import { EmailService } from '@/email/email.service.js';
+import type { EmailService } from '@/email/email.service.js';
 import { redis } from '@/redis/redis.js';
 
 import {
@@ -10,7 +10,11 @@ import {
 
 type ProcessJobFn = (job: Job<ConfirmationEmailJob>) => Promise<void>;
 
-function createProcessConfirmationEmailJob(emailService: EmailService): ProcessJobFn {
+type Deps = {
+  emailService: EmailService;
+};
+
+function createProcessConfirmationEmailJob({ emailService }: Deps): ProcessJobFn {
   return async function processJob(job) {
     const { email, repoName, confirmUrl } = job.data;
 
@@ -32,8 +36,8 @@ function createProcessConfirmationEmailJob(emailService: EmailService): ProcessJ
   };
 }
 
-export function createConfirmationEmailsWorker(emailService: EmailService) {
-  const processJob = createProcessConfirmationEmailJob(emailService);
+export function createConfirmationEmailsWorker(deps: Deps) {
+  const processJob = createProcessConfirmationEmailJob(deps);
 
   const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
     connection: redis,

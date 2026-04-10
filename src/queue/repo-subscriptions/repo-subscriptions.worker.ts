@@ -1,9 +1,9 @@
 import { Job, Worker } from 'bullmq';
 
-import { enqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
+import type { ReleaseEmailJob } from '@/queue/release-notifications/release-notifications.types.js';
 import { redis } from '@/redis/redis.js';
-import { RepositoryRepo } from '@/repository/repository.repo.js';
-import { SubscriptionRepo } from '@/subscription/subscription.repo.js';
+import type { RepositoryRepo } from '@/repository/repository.repo.js';
+import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
 import { sleep } from '@/utils/sleep.js';
 
 import { QUEUE_NAME_REPO_SUBSCRIPTIONS, RepoSubscriptionsJob } from './repo-subscriptions.types.js';
@@ -13,10 +13,17 @@ const POLL_DELAY_MS = 200;
 
 type ProcessJobFn = (job: Job<RepoSubscriptionsJob>) => Promise<void>;
 
-function createProcessRepoSubscriptionJob(
-  repositoryRepo: RepositoryRepo,
-  subscriptionRepo: SubscriptionRepo,
-): ProcessJobFn {
+type Deps = {
+  repositoryRepo: RepositoryRepo;
+  subscriptionRepo: SubscriptionRepo;
+  enqueueReleaseEmail: (job: ReleaseEmailJob) => Promise<void>;
+};
+
+function createProcessRepoSubscriptionJob({
+  repositoryRepo,
+  subscriptionRepo,
+  enqueueReleaseEmail,
+}: Deps): ProcessJobFn {
   return async function processJob(job) {
     const { repoId, repoName, latestTag } = job.data;
 
@@ -71,11 +78,8 @@ function createProcessRepoSubscriptionJob(
   };
 }
 
-export function createRepoSubscriptionsWorker(
-  repositoryRepo: RepositoryRepo,
-  subscriptionRepo: SubscriptionRepo,
-) {
-  const processJob = createProcessRepoSubscriptionJob(repositoryRepo, subscriptionRepo);
+export function createRepoSubscriptionsWorker(deps: Deps) {
+  const processJob = createProcessRepoSubscriptionJob(deps);
 
   const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
     connection: redis,

@@ -1,8 +1,8 @@
 import { Job, Worker } from 'bullmq';
 
-import { EmailService } from '@/email/email.service.js';
+import type { EmailService } from '@/email/email.service.js';
 import { redis } from '@/redis/redis.js';
-import { RepositoryRepo } from '@/repository/repository.repo.js';
+import type { RepositoryRepo } from '@/repository/repository.repo.js';
 
 import {
   QUEUE_NAME_RELEASE_NOTIFICATIONS,
@@ -11,10 +11,12 @@ import {
 
 type ProcessJobFn = (job: Job<ReleaseEmailJob>) => Promise<void>;
 
-function createProcessReleaseNotificationJob(
-  emailService: EmailService,
-  repositoryRepo: RepositoryRepo,
-): ProcessJobFn {
+type Deps = {
+  emailService: EmailService;
+  repositoryRepo: RepositoryRepo;
+};
+
+function createProcessReleaseNotificationJob({ emailService, repositoryRepo }: Deps): ProcessJobFn {
   return async function processJob(job) {
     const { repoId, email, tag: jobTag, repoName } = job.data;
 
@@ -54,11 +56,8 @@ function createProcessReleaseNotificationJob(
   };
 }
 
-export function createReleaseNotificationsWorker(
-  emailService: EmailService,
-  repositoryRepo: RepositoryRepo,
-) {
-  const processJob = createProcessReleaseNotificationJob(emailService, repositoryRepo);
+export function createReleaseNotificationsWorker(deps: Deps) {
+  const processJob = createProcessReleaseNotificationJob(deps);
 
   const emailWorker = new Worker<ReleaseEmailJob>(QUEUE_NAME_RELEASE_NOTIFICATIONS, processJob, {
     connection: redis,

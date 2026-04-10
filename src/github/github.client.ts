@@ -1,6 +1,7 @@
 import { err, ok, ResultAsync } from 'neverthrow';
 import { z, ZodType } from 'zod';
 
+import type { GithubClientConfig } from '@/config/config.js';
 import type { HttpError } from '@/utils/errors.js';
 import { env } from '@/config/env.js';
 import { parseRetryAfter } from '@/utils/errors.js';
@@ -12,8 +13,6 @@ export type GithubClient = {
   getRepo(owner: string, repo: string): ResultAsync<Repo, HttpError>;
   getLatestRelease(owner: string, repo: string): ResultAsync<string, HttpError>;
 };
-
-const BASE_URL = 'https://api.github.com';
 
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -70,32 +69,34 @@ function mapResponseToError(response: Response): HttpError {
   return { type: 'Unknown', statusCode: response.status, message: response.statusText };
 }
 
-function getRepo(owner: string, repo: string) {
-  return httpGet(`${BASE_URL}/repos/${owner}/${repo}`, RepoSchema);
-}
+export function createGithubClient(config: GithubClientConfig): GithubClient {
+  function getRepo(owner: string, repo: string) {
+    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}`, RepoSchema);
+  }
 
-function getLatestReleaseTag(owner: string, repo: string) {
-  return httpGet(`${BASE_URL}/repos/${owner}/${repo}/releases/latest`, ReleaseSchema).map(
-    (data) => data.tag_name,
-  );
-}
+  function getLatestReleaseTag(owner: string, repo: string) {
+    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}/releases/latest`, ReleaseSchema).map(
+      (data) => data.tag_name,
+    );
+  }
 
-function getLatestTag(owner: string, repo: string) {
-  return httpGet(`${BASE_URL}/repos/${owner}/${repo}/tags`, z.array(TagSchema)).andThen((data) => {
-    const tagValue = data[0]?.name;
-    return tagValue
-      ? ok(tagValue)
-      : err({ type: 'NotFound', message: `No tags found for ${owner}/${repo}` } as HttpError);
-  });
-}
+  function getLatestTag(owner: string, repo: string) {
+    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}/tags`, z.array(TagSchema)).andThen(
+      (data) => {
+        const tagValue = data[0]?.name;
+        return tagValue
+          ? ok(tagValue)
+          : err({ type: 'NotFound', message: `No tags found for ${owner}/${repo}` } as HttpError);
+      },
+    );
+  }
 
-function getLatestRelease(owner: string, repo: string) {
-  return getLatestReleaseTag(owner, repo).orElse((error) =>
-    error.type === 'NotFound' ? getLatestTag(owner, repo) : err(error),
-  );
-}
+  function getLatestRelease(owner: string, repo: string) {
+    return getLatestReleaseTag(owner, repo).orElse((error) =>
+      error.type === 'NotFound' ? getLatestTag(owner, repo) : err(error),
+    );
+  }
 
-export function createGithubClient(): GithubClient {
   return {
     getRepo,
     getLatestRelease,

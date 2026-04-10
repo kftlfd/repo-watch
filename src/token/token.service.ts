@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from 'crypto';
 import { err, ok, ResultAsync } from 'neverthrow';
 
+import type { TokenServiceConfig } from '@/config/config.js';
 import type { Token, TokenRepo } from '@/token/token.repo.js';
 import type { AppError } from '@/utils/errors.js';
 import { env } from '@/config/env.js';
@@ -24,8 +25,6 @@ export type TokenService = {
   deleteToken(tokenId: number): Promise<void>;
 };
 
-const TOKEN_EXPIRY_HOURS = 24;
-
 function generateToken(): string {
   return randomBytes(32).toString('hex');
 }
@@ -34,7 +33,12 @@ function hashToken(token: string): string {
   return createHmac('sha256', env.SERVER_SECRET).update(token).digest('hex');
 }
 
-export function createTokenService(tokenRepo: TokenRepo): TokenService {
+type Deps = {
+  config: TokenServiceConfig;
+  tokenRepo: TokenRepo;
+};
+
+export function createTokenService({ config, tokenRepo }: Deps): TokenService {
   async function createToken(
     options: CreateTokenOptions,
   ): Promise<{ token: string; tokenHash: string }> {
@@ -42,7 +46,7 @@ export function createTokenService(tokenRepo: TokenRepo): TokenService {
     const tokenHash = hashToken(token);
 
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + TOKEN_EXPIRY_HOURS);
+    expiresAt.setHours(expiresAt.getHours() + config.tokenExpiryHours);
 
     await tokenRepo.create({
       tokenHash,

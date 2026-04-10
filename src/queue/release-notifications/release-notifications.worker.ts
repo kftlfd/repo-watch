@@ -1,5 +1,6 @@
 import { Job, Worker } from 'bullmq';
 
+import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import { redis } from '@/redis/redis.js';
@@ -54,15 +55,15 @@ function createProcessReleaseNotificationJob({ emailService, repositoryRepo }: D
   };
 }
 
-export function createReleaseNotificationsWorker(deps: Deps) {
+export function createReleaseNotificationsWorker(deps: Deps, config: WorkerConfig) {
   const processJob = createProcessReleaseNotificationJob(deps);
 
   const emailWorker = new Worker<ReleaseEmailJob>(QUEUE_NAME_RELEASE_NOTIFICATIONS, processJob, {
     connection: redis,
-    concurrency: 10,
+    concurrency: config.concurrency,
     limiter: {
-      max: 5,
-      duration: 1000,
+      max: config.limiterMax,
+      duration: config.limiterDuration,
     },
   });
 

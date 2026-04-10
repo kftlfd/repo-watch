@@ -1,5 +1,6 @@
 import { Job, Worker } from 'bullmq';
 
+import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
 import { redis } from '@/redis/redis.js';
 
@@ -34,15 +35,15 @@ function createProcessConfirmationEmailJob({ emailService }: Deps): ProcessJobFn
   };
 }
 
-export function createConfirmationEmailsWorker(deps: Deps) {
+export function createConfirmationEmailsWorker(deps: Deps, config: WorkerConfig) {
   const processJob = createProcessConfirmationEmailJob(deps);
 
   const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
     connection: redis,
-    concurrency: 10,
+    concurrency: config.concurrency,
     limiter: {
-      max: 5,
-      duration: 1000,
+      max: config.limiterMax,
+      duration: config.limiterDuration,
     },
   });
 

@@ -1,15 +1,16 @@
 import Fastify from 'fastify';
 
 import { createRedisCache } from '@/cache/redisCache.js';
+import { config } from '@/config/config.js';
 import { env } from '@/config/env.js';
 import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
-import { enqueueConfirmationEmail } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
+import { createEnqueueConfirmationEmaiFn } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import { createConfirmationEmailsWorker } from '@/queue/confirmation-emails/confirmation-emails.worker.js';
-import { enqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
+import { createEnqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
 import { createReleaseNotificationsWorker } from '@/queue/release-notifications/release-notifications.worker.js';
-import { enqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
+import { createEnqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
 import { redis } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
@@ -20,14 +21,25 @@ import { createSubscriptionService } from '@/subscription/subscription.service.j
 import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
 
+const enqueueConfirmationEmail = createEnqueueConfirmationEmaiFn(
+  config.queues.confirmationEmails.queue,
+);
+const enqueueReleaseEmail = createEnqueueReleaseEmail(config.queues.releaseNotifications.queue);
+const enqueueRepoSubscriptions = createEnqueueRepoSubscriptions(
+  config.queues.repoSubscriptions.queue,
+);
 const cache = createRedisCache(redis);
 const repositoryRepo = createRepositoryRepo();
 const subscriptionRepo = createSubscriptionRepo();
 const tokenRepo = createTokenRepo();
 const emailService = createEmailService();
-const tokenService = createTokenService(tokenRepo);
-const ghClient = createGithubClient();
-const cachedGhClient = createCachedGithubClient({ base: ghClient, cache });
+const tokenService = createTokenService({ config: config.tokenService, tokenRepo });
+const ghClient = createGithubClient(config.githubClient);
+const cachedGhClient = createCachedGithubClient({
+  config: config.githubClient,
+  base: ghClient,
+  cache,
+});
 const subscriptionService = createSubscriptionService({
   repositoryRepo,
   subscriptionRepo,
@@ -38,6 +50,7 @@ const subscriptionService = createSubscriptionService({
 const subsController = createSubscriptionController(subscriptionService);
 
 const startScannerLoop = createScannerLoop({
+  config: config.scanner,
   repositoryRepo,
   githubClient: cachedGhClient,
   enqueueRepoSubscriptions,
@@ -47,16 +60,25 @@ startScannerLoop().catch((err: unknown) => {
 });
 
 const createWorkers = () => ({
-  confirmEmails: Array.from({ length: 1 }, () => createConfirmationEmailsWorker({ emailService })),
+  confirmEmails: Array.from({ length: 1 }, () =>
+    createConfirmationEmailsWorker({ emailService }, config.queues.confirmationEmails.worker),
+  ),
   releaseEmails: Array.from({ length: 1 }, () =>
-    createReleaseNotificationsWorker({ emailService, repositoryRepo }),
+    createReleaseNotificationsWorker(
+      { emailService, repositoryRepo },
+      config.queues.releaseNotifications.worker,
+    ),
   ),
   repoSubs: Array.from({ length: 1 }, () =>
-    createRepoSubscriptionsWorker({
-      repositoryRepo,
-      subscriptionRepo,
-      enqueueReleaseEmail,
-    }),
+    createRepoSubscriptionsWorker(
+      {
+        config: config.queues.repoSubscriptions.job,
+        repositoryRepo,
+        subscriptionRepo,
+        enqueueReleaseEmail,
+      },
+      config.queues.repoSubscriptions.worker,
+    ),
   ),
 });
 createWorkers();

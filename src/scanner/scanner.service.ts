@@ -1,29 +1,27 @@
 import { err, Result } from 'neverthrow';
 
+import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
 import type { EnqueueRepoSubscriptionsJobFn } from '@/queue/repo-subscriptions/repo-subscriptions.types.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import type { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
-const SCAN_INTERVAL_MS = 10 * 60 * 1000;
-const BATCH_SIZE = 20;
-const POLL_DELAY_MS = 200;
-const INITIAL_RETRY_DELAY_MS = 1000;
-
 type Deps = {
+  config: ScannerConfig;
   repositoryRepo: RepositoryRepo;
   githubClient: GithubClient;
   enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
 };
 
 export function createScannerLoop({
+  config,
   repositoryRepo,
   githubClient,
   enqueueRepoSubscriptions,
 }: Deps) {
   async function fetchWithRetry(owner: string, name: string): Promise<Result<string, HttpError>> {
-    let delayMs = INITIAL_RETRY_DELAY_MS;
+    let delayMs = config.initialRetryDelay;
 
     while (true) {
       const result = await githubClient.getLatestRelease(owner, name);
@@ -82,22 +80,22 @@ export function createScannerLoop({
 
   async function startScanner() {
     console.log(
-      `Scanner started (interval: ${SCAN_INTERVAL_MS.toString()}ms, batch: ${BATCH_SIZE.toString()})`,
+      `Scanner started (interval: ${config.scanIntervalMs.toString()}ms, batch: ${config.batchSize.toString()})`,
     );
 
     while (true) {
       try {
-        const repos = await repositoryRepo.findBatchForScanning(BATCH_SIZE);
+        const repos = await repositoryRepo.findBatchForScanning(config.batchSize);
 
         for (const repo of repos) {
           await processRepository(repo);
-          await sleep(POLL_DELAY_MS);
+          await sleep(config.pollDelayMs);
         }
       } catch (error) {
         console.error('Scanner error:', error);
       }
 
-      await sleep(SCAN_INTERVAL_MS);
+      await sleep(config.scanIntervalMs);
     }
   }
 

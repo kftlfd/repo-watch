@@ -1,5 +1,6 @@
 import { Job, Worker } from 'bullmq';
 
+import type { RepoSubJobConfig, WorkerConfig } from '@/config/config.js';
 import type { ReleaseEmailJob } from '@/queue/release-notifications/release-notifications.types.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
@@ -9,18 +10,17 @@ import { sleep } from '@/utils/sleep.js';
 import type { RepoSubscriptionsJob } from './repo-subscriptions.types.js';
 import { QUEUE_NAME_REPO_SUBSCRIPTIONS } from './repo-subscriptions.types.js';
 
-const BATCH_SIZE = 20;
-const POLL_DELAY_MS = 200;
-
 type ProcessJobFn = (job: Job<RepoSubscriptionsJob>) => Promise<void>;
 
 type Deps = {
+  config: RepoSubJobConfig;
   repositoryRepo: RepositoryRepo;
   subscriptionRepo: SubscriptionRepo;
   enqueueReleaseEmail: (job: ReleaseEmailJob) => Promise<void>;
 };
 
 function createProcessRepoSubscriptionJob({
+  config,
   repositoryRepo,
   subscriptionRepo,
   enqueueReleaseEmail,
@@ -48,7 +48,7 @@ function createProcessRepoSubscriptionJob({
       const subscriptionsBatch = await subscriptionRepo.getConfirmedByRepositoryIdBatch(
         repoId,
         cursor,
-        BATCH_SIZE,
+        config.batchSize,
       );
 
       if (subscriptionsBatch.length < 1) {
@@ -71,23 +71,23 @@ function createProcessRepoSubscriptionJob({
           });
       }
 
-      await sleep(POLL_DELAY_MS);
-      cursor = subscriptionsBatch.at(-1)?.id ?? cursor + BATCH_SIZE;
+      await sleep(config.pollDelayMs);
+      cursor = subscriptionsBatch.at(-1)?.id ?? cursor + config.batchSize;
     }
 
     console.log(`New release for ${repoName}@${latestTag}, enqueued ${total.toString()} emails`);
   };
 }
 
-export function createRepoSubscriptionsWorker(deps: Deps) {
+export function createRepoSubscriptionsWorker(deps: Deps, config: WorkerConfig) {
   const processJob = createProcessRepoSubscriptionJob(deps);
 
   const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
     connection: redis,
-    concurrency: 2,
+    concurrency: config.concurrency,
     limiter: {
-      max: 5,
-      duration: 1000,
+      max: config.limiterMax,
+      duration: config.limiterDuration,
     },
   });
 

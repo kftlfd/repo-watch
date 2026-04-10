@@ -1,6 +1,6 @@
 import { Job, Worker } from 'bullmq';
 
-import { sendEmail } from '@/email/email.service.js';
+import { EmailService } from '@/email/email.service.js';
 import { redis } from '@/redis/redis.js';
 
 import {
@@ -8,27 +8,33 @@ import {
   QUEUE_NAME_CONFIRMATION_EMAILS,
 } from './confirmation-emails.types.js';
 
-async function processJob(job: Job<ConfirmationEmailJob>) {
-  const { email, repoName, confirmUrl } = job.data;
+type ProcessJobFn = (job: Job<ConfirmationEmailJob>) => Promise<void>;
 
-  const sendResult = await sendEmail(email, {
-    type: 'confirmation',
-    data: {
-      repoName,
-      confirmUrl,
-    },
-  });
+function createProcessConfirmationEmailJob(emailService: EmailService): ProcessJobFn {
+  return async function processJob(job) {
+    const { email, repoName, confirmUrl } = job.data;
 
-  if (sendResult.isErr()) {
-    const error = sendResult.error;
-    console.error(`Failed to send confirmation email to ${email}:`, error.message);
-    throw new Error(error.message);
-  }
+    const sendResult = await emailService.sendEmail(email, {
+      type: 'confirmation',
+      data: {
+        repoName,
+        confirmUrl,
+      },
+    });
 
-  console.log(`Sent confirmation email for ${repoName} to ${email}`);
+    if (sendResult.isErr()) {
+      const error = sendResult.error;
+      console.error(`Failed to send confirmation email to ${email}:`, error.message);
+      throw new Error(error.message);
+    }
+
+    console.log(`Sent confirmation email for ${repoName} to ${email}`);
+  };
 }
 
-export function startConfirmationEmailsWorker() {
+export function createConfirmationEmailsWorker(emailService: EmailService) {
+  const processJob = createProcessConfirmationEmailJob(emailService);
+
   const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
     connection: redis,
     concurrency: 10,

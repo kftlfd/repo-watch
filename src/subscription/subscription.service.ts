@@ -1,7 +1,7 @@
 import { err, errAsync, ok, okAsync, Result, ResultAsync } from 'neverthrow';
 
 import { GithubClient } from '@/github/github.client.js';
-import { enqueueConfirmationEmail } from '@/queue/confirmation-emails/index.js';
+import { enqueueConfirmationEmail } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import { RepositoryRepo } from '@/repository/repository.repo.js';
 import {
   Subscription,

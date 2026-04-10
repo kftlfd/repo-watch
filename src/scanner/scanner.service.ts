@@ -1,6 +1,5 @@
 import { err, Result } from 'neverthrow';
 
-import { setCacheLatestTag } from '@/cache/cache.service.js';
 import { getLatestRelease } from '@/github/github.client.js';
 import { enqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import * as repositoryRepo from '@/repository/repository.repo.js';
@@ -40,13 +39,14 @@ async function fetchWithRetry(owner: string, name: string): Promise<Result<strin
 
 async function processRepository(repo: repositoryRepo.Repository) {
   const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
+  const now = new Date();
 
   const releaseResult = await fetchWithRetry(owner, name);
 
   if (releaseResult.isErr()) {
     const error = releaseResult.error;
     console.error(`Failed to fetch release for ${fullName}:`, error.type);
-    await repositoryRepo.update(repoId, { lastCheckedAt: new Date() });
+    await repositoryRepo.updateAfterScan(repoId, now);
     return;
   }
 
@@ -54,15 +54,11 @@ async function processRepository(repo: repositoryRepo.Repository) {
 
   if (latestTag === lastSeenTag) {
     console.log(`No new release for ${fullName}`);
-    await repositoryRepo.update(repoId, { lastCheckedAt: new Date() });
+    await repositoryRepo.updateAfterScan(repoId, now);
     return;
   }
 
-  await repositoryRepo.update(repoId, { lastSeenTag: latestTag, lastCheckedAt: new Date() });
-
-  await setCacheLatestTag(repoId, latestTag).catch((err: unknown) => {
-    console.log('Cache write failed:', err);
-  });
+  await repositoryRepo.updateAfterScan(repoId, now, latestTag);
 
   await enqueueRepoSubscriptions({ repoId, repoName: fullName, latestTag }).catch(
     (err: unknown) => {

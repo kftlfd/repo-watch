@@ -1,8 +1,8 @@
 import { Job, Worker } from 'bullmq';
 
-import { getLatestTag } from '@/cache/cache.service.js';
 import { redis } from '@/db/redis.js';
 import { sendEmail } from '@/email/email.service.js';
+import * as repositoryRepo from '@/repository/repository.repo.js';
 
 import {
   QUEUE_NAME_RELEASE_NOTIFICATIONS,
@@ -12,7 +12,7 @@ import {
 async function processJob(job: Job<ReleaseEmailJob>) {
   const { repoId, email, tag: jobTag, repoName } = job.data;
 
-  const latestTagResult = await getLatestTag(repoId);
+  const latestTagResult = await repositoryRepo.getLatestTag(repoId);
 
   if (latestTagResult.isErr()) {
     const error = latestTagResult.error;

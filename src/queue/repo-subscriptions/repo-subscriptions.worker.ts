@@ -1,6 +1,5 @@
 import { Job, Worker } from 'bullmq';
 
-import { getLatestTag } from '@/cache/cache.service.js';
 import { redis } from '@/db/redis.js';
 import { enqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
 import * as repositoryRepo from '@/repository/repository.repo.js';
@@ -15,7 +14,7 @@ const POLL_DELAY_MS = 200;
 async function processJob(job: Job<RepoSubscriptionsJob>) {
   const { repoId, repoName, latestTag } = job.data;
 
-  const latestTagResult = await getLatestTag(repoId);
+  const latestTagResult = await repositoryRepo.getLatestTag(repoId);
 
   if (latestTagResult.isErr()) {
     const error = latestTagResult.error;

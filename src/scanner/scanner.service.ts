@@ -1,8 +1,8 @@
 import { err, Result } from 'neverthrow';
 
-import { getLatestRelease } from '@/github/github.client.js';
+import { GithubClient } from '@/github/github.client.js';
 import { enqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
-import * as repositoryRepo from '@/repository/repository.repo.js';
+import { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
@@ -11,81 +11,85 @@ const BATCH_SIZE = 20;
 const POLL_DELAY_MS = 200;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
-async function fetchWithRetry(owner: string, name: string): Promise<Result<string, HttpError>> {
-  let delayMs = INITIAL_RETRY_DELAY_MS;
+export function createScannerLoop(repositoryRepo: RepositoryRepo, githubClient: GithubClient) {
+  async function fetchWithRetry(owner: string, name: string): Promise<Result<string, HttpError>> {
+    let delayMs = INITIAL_RETRY_DELAY_MS;
 
-  while (true) {
-    const result = await getLatestRelease(owner, name);
+    while (true) {
+      const result = await githubClient.getLatestRelease(owner, name);
 
-    if (result.isOk()) {
-      return result;
-    }
-
-    const error = result.error;
-    if (error.type !== 'TooManyRequests') {
-      return err(error);
-    }
-
-    let retryDelayMs = error.retryAfter;
-    if (!retryDelayMs) {
-      retryDelayMs = delayMs;
-      delayMs *= 2;
-    }
-
-    console.log(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
-    await sleep(retryDelayMs);
-  }
-}
-
-async function processRepository(repo: repositoryRepo.Repository) {
-  const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
-  const now = new Date();
-
-  const releaseResult = await fetchWithRetry(owner, name);
-
-  if (releaseResult.isErr()) {
-    const error = releaseResult.error;
-    console.error(`Failed to fetch release for ${fullName}:`, error.type);
-    await repositoryRepo.updateAfterScan(repoId, now);
-    return;
-  }
-
-  const latestTag = releaseResult.value;
-
-  if (latestTag === lastSeenTag) {
-    console.log(`No new release for ${fullName}`);
-    await repositoryRepo.updateAfterScan(repoId, now);
-    return;
-  }
-
-  await repositoryRepo.updateAfterScan(repoId, now, latestTag);
-
-  await enqueueRepoSubscriptions({ repoId, repoName: fullName, latestTag }).catch(
-    (err: unknown) => {
-      console.error('Enqueue error', err);
-    },
-  );
-
-  console.log(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
-}
-
-export async function startScanner() {
-  console.log(
-    `Scanner started (interval: ${SCAN_INTERVAL_MS.toString()}ms, batch: ${BATCH_SIZE.toString()})`,
-  );
-
-  while (true) {
-    try {
-      const repos = await repositoryRepo.findBatchForScanning(BATCH_SIZE);
-
-      for (const repo of repos) {
-        await processRepository(repo);
-        await sleep(POLL_DELAY_MS);
+      if (result.isOk()) {
+        return result;
       }
-    } catch (error) {
-      console.error('Scanner error:', error);
+
+      const error = result.error;
+      if (error.type !== 'TooManyRequests') {
+        return err(error);
+      }
+
+      let retryDelayMs = error.retryAfter;
+      if (!retryDelayMs) {
+        retryDelayMs = delayMs;
+        delayMs *= 2;
+      }
+
+      console.log(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
+      await sleep(retryDelayMs);
+    }
+  }
+
+  async function processRepository(repo: Repository) {
+    const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
+    const now = new Date();
+
+    const releaseResult = await fetchWithRetry(owner, name);
+
+    if (releaseResult.isErr()) {
+      const error = releaseResult.error;
+      console.error(`Failed to fetch release for ${fullName}:`, error.type);
+      await repositoryRepo.updateAfterScan(repoId, now);
+      return;
     }
 
-    await sleep(SCAN_INTERVAL_MS);
+    const latestTag = releaseResult.value;
+
+    if (latestTag === lastSeenTag) {
+      console.log(`No new release for ${fullName}`);
+      await repositoryRepo.updateAfterScan(repoId, now);
+      return;
+    }
+
+    await repositoryRepo.updateAfterScan(repoId, now, latestTag);
+
+    await enqueueRepoSubscriptions({ repoId, repoName: fullName, latestTag }).catch(
+      (err: unknown) => {
+        console.error('Enqueue error', err);
+      },
+    );
+
+    console.log(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
   }
+
+  async function startScanner() {
+    console.log(
+      `Scanner started (interval: ${SCAN_INTERVAL_MS.toString()}ms, batch: ${BATCH_SIZE.toString()})`,
+    );
+
+    while (true) {
+      try {
+        const repos = await repositoryRepo.findBatchForScanning(BATCH_SIZE);
+
+        for (const repo of repos) {
+          await processRepository(repo);
+          await sleep(POLL_DELAY_MS);
+        }
+      } catch (error) {
+        console.error('Scanner error:', error);
+      }
+
+      await sleep(SCAN_INTERVAL_MS);
+    }
+  }
+
+  return startScanner;
 }

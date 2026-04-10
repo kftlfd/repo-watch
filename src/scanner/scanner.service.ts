@@ -2,9 +2,8 @@ import { err, Result } from 'neverthrow';
 
 import { setCacheLatestTag } from '@/cache/cache.service.js';
 import { getLatestRelease } from '@/github/github.client.js';
-import { enqueueReleaseEmail } from '@/queue/release-notifications/index.js';
+import { enqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import * as repositoryRepo from '@/repository/repository.repo.js';
-import * as subscriptionRepo from '@/subscription/subscription.repo.js';
 import { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
@@ -65,26 +64,13 @@ async function processRepository(repo: repositoryRepo.Repository) {
     console.log('Cache write failed:', err);
   });
 
-  const subscriptions = await subscriptionRepo.findConfirmedByRepositoryId(repoId);
-
-  if (subscriptions.length < 1) {
-    console.log(`New release for ${fullName}: ${latestTag}, no subscribers, marking as inactive`);
-    await repositoryRepo.update(repoId, { isActive: false });
-    return;
-  }
-
-  for (const sub of subscriptions) {
-    await enqueueReleaseEmail({
-      repoId,
-      email: sub.email,
-      tag: latestTag,
-      repoName: fullName,
-    });
-  }
-
-  console.log(
-    `New release for ${fullName}: ${latestTag}, enqueued ${String(subscriptions.length)} emails`,
+  await enqueueRepoSubscriptions({ repoId, repoName: fullName, latestTag }).catch(
+    (err: unknown) => {
+      console.error('Enqueue error', err);
+    },
   );
+
+  console.log(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
 }
 
 export async function startScanner() {

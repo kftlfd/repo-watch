@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull } from 'drizzle-orm';
 
 import { db } from '@/db/client.js';
 import { repositories, subscriptions } from '@/db/schema.js';
@@ -44,6 +44,26 @@ export async function findConfirmedByRepositoryId(repositoryId: number) {
         isNull(subscriptions.removedAt),
       ),
     );
+}
+
+export async function getConfirmedByRepositoryIdBatch(
+  repositoryId: number,
+  cursor: number,
+  batchSize: number,
+) {
+  return db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.repositoryId, repositoryId),
+        isNotNull(subscriptions.confirmedAt),
+        isNull(subscriptions.removedAt),
+        gt(subscriptions.id, cursor),
+      ),
+    )
+    .orderBy(subscriptions.id)
+    .limit(batchSize);
 }
 
 export async function create(data: NewSubscription) {

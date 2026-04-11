@@ -32,13 +32,34 @@ export type TokenServiceConfig = {
 export type QueueConfig = {
   attempts: number;
   expBackoffDelay: number;
+  keepCompletedCount: number;
+  keepFailedCount: number;
 };
+
+function queueConf(overrides?: Partial<QueueConfig>): QueueConfig {
+  return {
+    attempts: 2,
+    expBackoffDelay: 1_000,
+    keepCompletedCount: 100,
+    keepFailedCount: 50,
+    ...overrides,
+  };
+}
 
 export type WorkerConfig = {
   concurrency: number;
   limiterMax: number;
   limiterDuration: number;
 };
+
+export function workerConf(overrides?: Partial<WorkerConfig>): WorkerConfig {
+  return {
+    concurrency: 1,
+    limiterMax: 1,
+    limiterDuration: 1_000,
+    ...overrides,
+  };
+}
 
 type QueueWorkerConfig = {
   queue: QueueConfig;
@@ -96,16 +117,16 @@ export const config: Config = {
   },
   queues: {
     confirmationEmails: {
-      queue: { attempts: 3, expBackoffDelay: 1_000 },
-      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1_000 },
+      queue: queueConf({ attempts: 3 }),
+      worker: workerConf(),
     },
     releaseNotifications: {
-      queue: { attempts: 2, expBackoffDelay: 1_000 },
-      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1_000 },
+      queue: queueConf(),
+      worker: workerConf(),
     },
     repoSubscriptions: {
-      queue: { attempts: 2, expBackoffDelay: 1_000 },
-      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1_000 },
+      queue: queueConf(),
+      worker: workerConf(),
       job: { batchSize: 20, pollDelayMs: 200 },
     },
   },

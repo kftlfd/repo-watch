@@ -18,6 +18,10 @@ type Deps = {
 export function createRepoSubscriptionsQueue({ config, redis }: Deps): RepoSubscriptionsQueue {
   const queue = new Queue(QUEUE_NAME_REPO_SUBSCRIPTIONS, {
     connection: redis,
+    defaultJobOptions: {
+      removeOnComplete: { count: config.keepCompletedCount },
+      removeOnFail: { count: config.keepFailedCount },
+    },
   });
 
   return {

@@ -21,6 +21,10 @@ export function createReleaseNotificationsQueue({
 }: Deps): ReleaseNotificationsQueue {
   const queue = new Queue(QUEUE_NAME_RELEASE_NOTIFICATIONS, {
     connection: redis,
+    defaultJobOptions: {
+      removeOnComplete: { count: config.keepCompletedCount },
+      removeOnFail: { count: config.keepFailedCount },
+    },
   });
 
   return {

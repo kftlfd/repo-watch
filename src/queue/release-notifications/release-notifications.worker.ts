@@ -88,7 +88,10 @@ export function createReleaseNotificationsWorker({
   tokenService,
   redis,
 }: Deps) {
-  const log = logger.child({ module: 'release-notifications.worker' });
+  const log = logger.child({
+    module: 'release-notifications.worker',
+    queue: QUEUE_NAME_RELEASE_NOTIFICATIONS,
+  });
 
   const processJob = createProcessReleaseNotificationJob({
     log,

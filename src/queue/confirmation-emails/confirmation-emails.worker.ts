@@ -45,7 +45,10 @@ type Deps = {
 };
 
 export function createConfirmationEmailsWorker({ config, logger, emailService, redis }: Deps) {
-  const log = logger.child({ module: 'confirmation-emails.worker' });
+  const log = logger.child({
+    module: 'confirmation-emails.worker',
+    queue: QUEUE_NAME_CONFIRMATION_EMAILS,
+  });
 
   const processJob = createProcessConfirmationEmailJob({ log, emailService });
 

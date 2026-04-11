@@ -102,7 +102,10 @@ export function createRepoSubscriptionsWorker({
   releaseNotificationsQueue,
   redis,
 }: Deps) {
-  const log = logger.child({ module: 'repo-subscriptions.worker' });
+  const log = logger.child({
+    module: 'repo-subscriptions.worker',
+    queue: QUEUE_NAME_REPO_SUBSCRIPTIONS,
+  });
 
   const processJob = createProcessRepoSubscriptionJob({
     log,

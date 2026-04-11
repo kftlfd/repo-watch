@@ -18,6 +18,10 @@ type Deps = {
 export function createConfirmationEmailsQueue({ config, redis }: Deps): ConfirmationEmailsQueue {
   const queue = new Queue(QUEUE_NAME_CONFIRMATION_EMAILS, {
     connection: redis,
+    defaultJobOptions: {
+      removeOnComplete: { count: config.keepCompletedCount },
+      removeOnFail: { count: config.keepFailedCount },
+    },
   });
 
   return {

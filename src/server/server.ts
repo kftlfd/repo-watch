@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyPluginCallback } from 'fastify';
+import type { FastifyPluginCallback } from 'fastify';
 import Fastify from 'fastify';
 
 import type { Logger } from '@/logger/logger.js';
@@ -8,9 +8,9 @@ type Deps = {
   subscriptionController: FastifyPluginCallback;
 };
 
-export function createFastifyServer({ logger, subscriptionController }: Deps): FastifyInstance {
+export function createFastifyServer({ logger, subscriptionController }: Deps) {
   const app = Fastify({
-    logger,
+    loggerInstance: logger,
   });
 
   app.get('/', function handler() {

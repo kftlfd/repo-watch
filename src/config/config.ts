@@ -75,15 +75,15 @@ export const config: Config = {
   queues: {
     confirmationEmails: {
       queue: { attempts: 3, expBackoffDelay: 1000 },
-      worker: { concurrency: 1, limiterMax: 5, limiterDuration: 1000 },
+      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1000 },
     },
     releaseNotifications: {
       queue: { attempts: 2, expBackoffDelay: 1000 },
-      worker: { concurrency: 1, limiterMax: 5, limiterDuration: 1000 },
+      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1000 },
     },
     repoSubscriptions: {
       queue: { attempts: 2, expBackoffDelay: 1000 },
-      worker: { concurrency: 1, limiterMax: 5, limiterDuration: 1000 },
+      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1000 },
       job: { batchSize: 20, pollDelayMs: 200 },
     },
   },

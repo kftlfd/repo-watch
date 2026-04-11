@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { Cache } from '@/cache/cache.js';
@@ -55,7 +55,7 @@ async function findBatchForScanning(limit: number) {
     .select()
     .from(repositories)
     .where(eq(repositories.isActive, true))
-    .orderBy(asc(sql`${repositories.lastCheckedAt} NULLS FIRST`))
+    .orderBy(sql`${repositories.lastCheckedAt} asc NULLS FIRST`)
     .limit(limit);
 }
 

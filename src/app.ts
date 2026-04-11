@@ -86,6 +86,7 @@ export function createApp(config: Config) {
       logger,
       emailService,
       repositoryRepo,
+      tokenService,
     }),
     createRepoSubscriptionsWorker({
       redis,

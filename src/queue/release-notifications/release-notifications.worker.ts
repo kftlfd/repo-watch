@@ -5,6 +5,7 @@ import type { EmailService } from '@/email/email.service.js';
 import type { Logger } from '@/logger/logger.js';
 import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
+import type { TokenService } from '@/token/token.service.js';
 
 import type { ReleaseEmailJob } from './release-notifications.types.js';
 import { QUEUE_NAME_RELEASE_NOTIFICATIONS } from './release-notifications.types.js';
@@ -15,12 +16,14 @@ type ProcessJobDeps = {
   log: Logger;
   emailService: EmailService;
   repositoryRepo: RepositoryRepo;
+  tokenService: TokenService;
 };
 
 function createProcessReleaseNotificationJob({
   log,
   emailService,
   repositoryRepo,
+  tokenService,
 }: ProcessJobDeps): ProcessJobFn {
   return async function processJob(job) {
     const { repoId, email, tag: jobTag, repoName } = job.data;
@@ -41,13 +44,20 @@ function createProcessReleaseNotificationJob({
       return;
     }
 
+    const tokenResult = await tokenService.createToken({
+      email,
+      repositoryId: repoId,
+      type: 'unsubscribe',
+    });
+    const unsubscribeUrl = tokenService.getTokenUrl(tokenResult.token, 'unsubscribe');
+
     const sendResult = await emailService.sendEmail(email, {
       type: 'release',
       data: {
         repoName,
         tag: jobTag,
         releaseUrl: `https://github.com/${repoName}/releases/tag/${jobTag}`,
-        unsubscribeUrl: `https://example.com/unsubscribe`,
+        unsubscribeUrl,
       },
     });
 
@@ -66,6 +76,7 @@ type Deps = {
   logger: Logger;
   emailService: EmailService;
   repositoryRepo: RepositoryRepo;
+  tokenService: TokenService;
   redis: Redis;
 };
 
@@ -74,6 +85,7 @@ export function createReleaseNotificationsWorker({
   logger,
   emailService,
   repositoryRepo,
+  tokenService,
   redis,
 }: Deps) {
   const log = logger.child({ module: 'release-notifications.worker' });
@@ -82,6 +94,7 @@ export function createReleaseNotificationsWorker({
     log,
     emailService,
     repositoryRepo,
+    tokenService,
   });
 
   const emailWorker = new Worker<ReleaseEmailJob>(QUEUE_NAME_RELEASE_NOTIFICATIONS, processJob, {

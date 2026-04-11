@@ -8,6 +8,11 @@ import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js
 import type { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
+export type ScannerService = {
+  start(): Promise<void>;
+  stop(): void;
+};
+
 type FetchWithRetryFn = (owner: string, name: string) => Promise<Result<string, HttpError>>;
 
 export function createFetchWithRetryFn({
@@ -105,13 +110,13 @@ type Deps = {
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
 };
 
-export function createScannerLoop({
+export function createScannerService({
   config,
   repositoryRepo,
   githubClient,
   logger,
   repoSubscriptionsQueue,
-}: Deps) {
+}: Deps): ScannerService {
   const log = logger.child({ module: 'scanner.service' });
 
   const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient });
@@ -122,12 +127,14 @@ export function createScannerLoop({
     repoSubscriptionsQueue,
   });
 
-  async function startScanner() {
+  let running = true;
+
+  async function start() {
     log.info(
       `Scanner started (interval: ${config.scanIntervalMs.toString()}ms, batch: ${config.batchSize.toString()})`,
     );
 
-    while (true) {
+    while (running) {
       try {
         const repos = await repositoryRepo.findBatchForScanning(config.batchSize);
 
@@ -143,5 +150,9 @@ export function createScannerLoop({
     }
   }
 
-  return startScanner;
+  function stop() {
+    running = false;
+  }
+
+  return { start, stop };
 }

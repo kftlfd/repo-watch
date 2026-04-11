@@ -3,8 +3,8 @@ import { Job, Worker } from 'bullmq';
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
 import type { Logger } from '@/logger/logger.js';
+import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
-import { redis } from '@/redis/redis.js';
 
 import type { ReleaseEmailJob } from './release-notifications.types.js';
 import { QUEUE_NAME_RELEASE_NOTIFICATIONS } from './release-notifications.types.js';
@@ -66,6 +66,7 @@ type Deps = {
   logger: Logger;
   emailService: EmailService;
   repositoryRepo: RepositoryRepo;
+  redis: Redis;
 };
 
 export function createReleaseNotificationsWorker({
@@ -73,6 +74,7 @@ export function createReleaseNotificationsWorker({
   logger,
   emailService,
   repositoryRepo,
+  redis,
 }: Deps) {
   const log = logger.child({ module: 'release-notifications.worker' });
 

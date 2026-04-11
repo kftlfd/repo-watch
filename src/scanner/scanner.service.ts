@@ -3,7 +3,7 @@ import { err, Result } from 'neverthrow';
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
 import type { Logger } from '@/logger/logger.js';
-import type { EnqueueRepoSubscriptionsJobFn } from '@/queue/repo-subscriptions/repo-subscriptions.types.js';
+import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import type { HttpError } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
@@ -50,12 +50,12 @@ export function createProcessRepositoryFn({
   log,
   repositoryRepo,
   fetchWithRetry,
-  enqueueRepoSubscriptions,
+  repoSubscriptionsQueue,
 }: {
   log: Logger;
   repositoryRepo: RepositoryRepo;
   fetchWithRetry: FetchWithRetryFn;
-  enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
+  repoSubscriptionsQueue: RepoSubscriptionsQueue;
 }) {
   return async function processRepository(repo: Repository) {
     const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
@@ -83,11 +83,15 @@ export function createProcessRepositoryFn({
 
     await repositoryRepo.updateAfterScan(repoId, now, latestTag);
 
-    await enqueueRepoSubscriptions({ repoId, repoName: fullName, latestTag }).catch(
-      (error: unknown) => {
+    await repoSubscriptionsQueue
+      .enqueueRepoSubscriptions({
+        repoId,
+        repoName: fullName,
+        latestTag,
+      })
+      .catch((error: unknown) => {
         log.error({ error }, 'Enqueue error');
-      },
-    );
+      });
 
     log.info(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
   };
@@ -98,7 +102,7 @@ type Deps = {
   repositoryRepo: RepositoryRepo;
   githubClient: GithubClient;
   logger: Logger;
-  enqueueRepoSubscriptions: EnqueueRepoSubscriptionsJobFn;
+  repoSubscriptionsQueue: RepoSubscriptionsQueue;
 };
 
 export function createScannerLoop({
@@ -106,7 +110,7 @@ export function createScannerLoop({
   repositoryRepo,
   githubClient,
   logger,
-  enqueueRepoSubscriptions,
+  repoSubscriptionsQueue,
 }: Deps) {
   const log = logger.child({ module: 'scanner.service' });
 
@@ -115,7 +119,7 @@ export function createScannerLoop({
     log,
     repositoryRepo,
     fetchWithRetry,
-    enqueueRepoSubscriptions,
+    repoSubscriptionsQueue,
   });
 
   async function startScanner() {

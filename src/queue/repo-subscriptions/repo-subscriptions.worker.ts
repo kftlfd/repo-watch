@@ -2,10 +2,10 @@ import { Job, Worker } from 'bullmq';
 
 import type { RepoSubJobConfig, WorkerConfig } from '@/config/config.js';
 import type { Logger } from '@/logger/logger.js';
-import type { ReleaseEmailJob } from '@/queue/release-notifications/release-notifications.types.js';
+import type { ReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
+import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
-import { redis } from '@/redis/redis.js';
 import { sleep } from '@/utils/sleep.js';
 
 import type { RepoSubscriptionsJob } from './repo-subscriptions.types.js';
@@ -18,7 +18,7 @@ type ProcessJobDeps = {
   log: Logger;
   repositoryRepo: RepositoryRepo;
   subscriptionRepo: SubscriptionRepo;
-  enqueueReleaseEmail: (job: ReleaseEmailJob) => Promise<void>;
+  releaseNotificationsQueue: ReleaseNotificationsQueue;
 };
 
 function createProcessRepoSubscriptionJob({
@@ -26,7 +26,7 @@ function createProcessRepoSubscriptionJob({
   log,
   repositoryRepo,
   subscriptionRepo,
-  enqueueReleaseEmail,
+  releaseNotificationsQueue,
 }: ProcessJobDeps): ProcessJobFn {
   return async function processJob(job) {
     const { repoId, repoName, latestTag } = job.data;
@@ -65,7 +65,8 @@ function createProcessRepoSubscriptionJob({
       }
 
       for (const sub of subscriptionsBatch) {
-        await enqueueReleaseEmail({ repoId, repoName, email: sub.email, tag: latestTag })
+        await releaseNotificationsQueue
+          .enqueueReleaseEmail({ repoId, repoName, email: sub.email, tag: latestTag })
           .then(() => {
             total++;
           })
@@ -88,7 +89,8 @@ type Deps = {
   logger: Logger;
   repositoryRepo: RepositoryRepo;
   subscriptionRepo: SubscriptionRepo;
-  enqueueReleaseEmail: (job: ReleaseEmailJob) => Promise<void>;
+  releaseNotificationsQueue: ReleaseNotificationsQueue;
+  redis: Redis;
 };
 
 export function createRepoSubscriptionsWorker({
@@ -97,7 +99,8 @@ export function createRepoSubscriptionsWorker({
   logger,
   repositoryRepo,
   subscriptionRepo,
-  enqueueReleaseEmail,
+  releaseNotificationsQueue,
+  redis,
 }: Deps) {
   const log = logger.child({ module: 'repo-subscriptions.worker' });
 
@@ -106,7 +109,7 @@ export function createRepoSubscriptionsWorker({
     config: jobConfig,
     repositoryRepo,
     subscriptionRepo,
-    enqueueReleaseEmail,
+    releaseNotificationsQueue,
   });
 
   const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {

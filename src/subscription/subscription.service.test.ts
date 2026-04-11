@@ -7,6 +7,7 @@ import {
   createMockRepositoryRepo,
   createMockSubscriptionRepo,
   createMockTokenService,
+  createMockConfirmationEmailsQueue,
 } from '@/test/mocks.js';
 import { expectErr } from '@/test/utils/result.js';
 
@@ -95,7 +96,7 @@ describe('SubscriptionService', () => {
 describe('-- trying things out, can ignore --', () => {
   it('returns an err result on token creation fail', async () => {
     const logger = createLogger();
-    const enqueueConfirmationEmail = vi.fn().mockResolvedValue(null);
+    const confirmationEmailsQueue = createMockConfirmationEmailsQueue();
     const githubClient = createMockGithubClient();
     const repositoryRepo = createMockRepositoryRepo({
       findByFullName: vi.fn().mockResolvedValue({
@@ -115,7 +116,7 @@ describe('-- trying things out, can ignore --', () => {
 
     const service = createSubscriptionService({
       logger,
-      enqueueConfirmationEmail,
+      confirmationEmailsQueue,
       githubClient,
       repositoryRepo,
       subscriptionRepo,

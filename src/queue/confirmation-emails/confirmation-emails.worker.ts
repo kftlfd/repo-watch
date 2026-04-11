@@ -3,7 +3,7 @@ import { Job, Worker } from 'bullmq';
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
 import type { Logger } from '@/logger/logger.js';
-import { redis } from '@/redis/redis.js';
+import type { Redis } from '@/redis/redis.js';
 
 import type { ConfirmationEmailJob } from './confirmation-emails.types.js';
 import { QUEUE_NAME_CONFIRMATION_EMAILS } from './confirmation-emails.types.js';
@@ -41,9 +41,10 @@ type Deps = {
   config: WorkerConfig;
   logger: Logger;
   emailService: EmailService;
+  redis: Redis;
 };
 
-export function createConfirmationEmailsWorker({ config, logger, emailService }: Deps) {
+export function createConfirmationEmailsWorker({ config, logger, emailService, redis }: Deps) {
   const log = logger.child({ module: 'confirmation-emails.worker' });
 
   const processJob = createProcessConfirmationEmailJob({ log, emailService });

@@ -1,20 +1,34 @@
 import { Queue } from 'bullmq';
 
 import type { QueueConfig } from '@/config/config.js';
-import { redis } from '@/redis/redis.js';
+import type { Redis } from '@/redis/redis.js';
 
-import type { EnqueueReleaseEmailJobFn } from './release-notifications.types.js';
+import type { ReleaseEmailJob } from './release-notifications.types.js';
 import { QUEUE_NAME_RELEASE_NOTIFICATIONS } from './release-notifications.types.js';
 
-const emailQueue = new Queue(QUEUE_NAME_RELEASE_NOTIFICATIONS, {
-  connection: redis,
-});
+export type ReleaseNotificationsQueue = {
+  enqueueReleaseEmail(job: ReleaseEmailJob): Promise<void>;
+};
 
-export function createEnqueueReleaseEmail(config: QueueConfig): EnqueueReleaseEmailJobFn {
-  return async function enqueueReleaseEmail(job) {
-    await emailQueue.add('send-email', job, {
-      attempts: config.attempts,
-      backoff: { type: 'exponential', delay: config.expBackoffDelay },
-    });
+type Deps = {
+  config: QueueConfig;
+  redis: Redis;
+};
+
+export function createReleaseNotificationsQueue({
+  config,
+  redis,
+}: Deps): ReleaseNotificationsQueue {
+  const queue = new Queue(QUEUE_NAME_RELEASE_NOTIFICATIONS, {
+    connection: redis,
+  });
+
+  return {
+    async enqueueReleaseEmail(job) {
+      await queue.add('send-release-notification-email', job, {
+        attempts: config.attempts,
+        backoff: { type: 'exponential', delay: config.expBackoffDelay },
+      });
+    },
   };
 }

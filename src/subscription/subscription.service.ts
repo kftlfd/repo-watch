@@ -2,7 +2,7 @@ import { err, errAsync, ok, okAsync, Result, ResultAsync } from 'neverthrow';
 
 import type { GithubClient } from '@/github/github.client.js';
 import type { Logger } from '@/logger/logger.js';
-import type { EnqueueConfirmationEmailJobFn } from '@/queue/confirmation-emails/confirmation-emails.types.js';
+import type { ConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type {
   Subscription,
@@ -49,7 +49,7 @@ type Deps = {
   tokenService: TokenService;
   githubClient: GithubClient;
   logger: Logger;
-  enqueueConfirmationEmail: EnqueueConfirmationEmailJobFn;
+  confirmationEmailsQueue: ConfirmationEmailsQueue;
 };
 
 export function createSubscriptionService({
@@ -58,7 +58,7 @@ export function createSubscriptionService({
   tokenService,
   githubClient,
   logger,
-  enqueueConfirmationEmail,
+  confirmationEmailsQueue,
 }: Deps): SubscriptionService {
   const log = logger.child({ module: 'subscription.service' });
 
@@ -172,7 +172,7 @@ export function createSubscriptionService({
     const emailOk = tokenResult.andThen((token) => {
       const confirmUrl = tokenService.getTokenUrl(token.token, 'confirm');
       return ResultAsync.fromPromise(
-        enqueueConfirmationEmail({
+        confirmationEmailsQueue.enqueueConfirmationEmail({
           email,
           repoName: repoFullName,
           confirmUrl,

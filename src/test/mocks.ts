@@ -1,6 +1,9 @@
 import { vi } from 'vitest';
 
 import type { GithubClient } from '@/github/github.client.js';
+import type { ConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
+import type { ReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
+import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
 import type { SubscriptionService } from '@/subscription/subscription.service.js';
@@ -58,6 +61,33 @@ export function createMockSubscriptionService(
     confirm: vi.fn(),
     listSubscriptions: vi.fn(),
     unsubscribe: vi.fn(),
+    ...overrides,
+  };
+}
+
+export function createMockConfirmationEmailsQueue(
+  overrides?: Partial<ConfirmationEmailsQueue>,
+): ConfirmationEmailsQueue {
+  return {
+    enqueueConfirmationEmail: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+export function createMockReleaseNotificationsQueue(
+  overrides?: Partial<ReleaseNotificationsQueue>,
+): ReleaseNotificationsQueue {
+  return {
+    enqueueReleaseEmail: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+export function createMockRepoSubscriptionsQueue(
+  overrides?: Partial<RepoSubscriptionsQueue>,
+): RepoSubscriptionsQueue {
+  return {
+    enqueueRepoSubscriptions: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

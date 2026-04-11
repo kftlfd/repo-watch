@@ -7,11 +7,11 @@ import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
 import { createLogger } from '@/logger/logger.js';
-import { createEnqueueConfirmationEmaiFn } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
+import { createConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import { createConfirmationEmailsWorker } from '@/queue/confirmation-emails/confirmation-emails.worker.js';
-import { createEnqueueReleaseEmail } from '@/queue/release-notifications/release-notifications.queue.js';
+import { createReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
 import { createReleaseNotificationsWorker } from '@/queue/release-notifications/release-notifications.worker.js';
-import { createEnqueueRepoSubscriptions } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
+import { createRepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
 import { redis } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
@@ -24,13 +24,19 @@ import { createTokenService } from '@/token/token.service.js';
 
 const logger = createLogger();
 
-const enqueueConfirmationEmail = createEnqueueConfirmationEmaiFn(
-  config.queues.confirmationEmails.queue,
-);
-const enqueueReleaseEmail = createEnqueueReleaseEmail(config.queues.releaseNotifications.queue);
-const enqueueRepoSubscriptions = createEnqueueRepoSubscriptions(
-  config.queues.repoSubscriptions.queue,
-);
+const confirmationEmailsQueue = createConfirmationEmailsQueue({
+  config: config.queues.confirmationEmails.queue,
+  redis,
+});
+const releaseNotificationsQueue = createReleaseNotificationsQueue({
+  config: config.queues.releaseNotifications.queue,
+  redis,
+});
+const repoSubscriptionsQueue = createRepoSubscriptionsQueue({
+  config: config.queues.repoSubscriptions.queue,
+  redis,
+});
+
 const cache = createRedisCache(redis);
 const repositoryRepo = createRepositoryRepo({ config: config.repositoryRepo, logger, cache });
 const subscriptionRepo = createSubscriptionRepo();
@@ -50,8 +56,9 @@ const subscriptionService = createSubscriptionService({
   subscriptionRepo,
   tokenService,
   githubClient: cachedGhClient,
-  enqueueConfirmationEmail,
+  confirmationEmailsQueue,
 });
+
 const subsController = createSubscriptionController(subscriptionService);
 
 const startScannerLoop = createScannerLoop({
@@ -59,36 +66,33 @@ const startScannerLoop = createScannerLoop({
   logger,
   repositoryRepo,
   githubClient: cachedGhClient,
-  enqueueRepoSubscriptions,
+  repoSubscriptionsQueue,
 });
 
-const createWorkers = () => ({
-  confirmEmails: Array.from({ length: 1 }, () =>
-    createConfirmationEmailsWorker({
-      config: config.queues.confirmationEmails.worker,
-      logger,
-      emailService,
-    }),
-  ),
-  releaseEmails: Array.from({ length: 1 }, () =>
-    createReleaseNotificationsWorker({
-      config: config.queues.releaseNotifications.worker,
-      logger,
-      emailService,
-      repositoryRepo,
-    }),
-  ),
-  repoSubs: Array.from({ length: 1 }, () =>
-    createRepoSubscriptionsWorker({
-      config: config.queues.repoSubscriptions.worker,
-      jobConfig: config.queues.repoSubscriptions.job,
-      logger,
-      repositoryRepo,
-      subscriptionRepo,
-      enqueueReleaseEmail,
-    }),
-  ),
-});
+const createWorkers = () => [
+  createConfirmationEmailsWorker({
+    redis,
+    config: config.queues.confirmationEmails.worker,
+    logger,
+    emailService,
+  }),
+  createReleaseNotificationsWorker({
+    redis,
+    config: config.queues.releaseNotifications.worker,
+    logger,
+    emailService,
+    repositoryRepo,
+  }),
+  createRepoSubscriptionsWorker({
+    redis,
+    config: config.queues.repoSubscriptions.worker,
+    jobConfig: config.queues.repoSubscriptions.job,
+    logger,
+    repositoryRepo,
+    subscriptionRepo,
+    releaseNotificationsQueue,
+  }),
+];
 
 const app = Fastify({
   logger,

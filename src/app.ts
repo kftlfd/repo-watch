@@ -74,7 +74,7 @@ export function createApp(config: Config) {
   });
 
   // queue workers
-  const workers = [
+  const createWorkers = () => [
     createConfirmationEmailsWorker({
       redis,
       config: config.queues.confirmationEmails.worker,
@@ -104,10 +104,10 @@ export function createApp(config: Config) {
   const app = createFastifyServer({ logger, subscriptionController });
 
   return {
+    logger,
     app,
     scannerService,
-    workers,
-    logger,
+    createWorkers,
     closeDB,
     closeRedis,
   };

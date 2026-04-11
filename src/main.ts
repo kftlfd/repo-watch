@@ -3,9 +3,13 @@ import { config } from '@/config/config.js';
 import { env } from '@/config/env.js';
 
 function bootstrap() {
-  const { app, scannerService, workers, logger, closeDB, closeRedis } = createApp(config);
+  const { logger, app, scannerService, createWorkers, closeDB, closeRedis } = createApp(config);
+
+  let workers: ReturnType<typeof createWorkers> = [];
 
   async function start() {
+    workers = createWorkers();
+
     return Promise.all([
       scannerService.start(),
 

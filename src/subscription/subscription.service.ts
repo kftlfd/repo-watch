@@ -63,32 +63,32 @@ export function createSubscriptionService({
   const log = logger.child({ module: 'subscription.service' });
 
   async function subscribe(input: SubscribeInput) {
-    const { email, repoFullName } = input;
+    const { email, repo: repoFullName } = input;
     const { owner, name } = parseRepoFullName(repoFullName);
 
     // 1. Get the repo from DB or fetch from GH
-    const repo = await ResultAsync.fromPromise(
+    const repoResult = await ResultAsync.fromPromise(
       repositoryRepo.findByFullName(repoFullName),
       (): AppError => ({ type: 'Internal', message: 'DB error' }),
     )
-      .andThen((repo) =>
-        repo
-          ? ok({ type: 'DB_REPO' as const, repo })
+      .andThen((foundRepo) =>
+        foundRepo
+          ? ok({ type: 'DB_REPO' as const, repo: foundRepo })
           : err({ type: 'NotFound', message: 'Repo not found in DB' } as AppError),
       )
       .orElse(() =>
         githubClient
           .getRepo(owner, name)
-          .map((repo) => ({ type: 'GH_REPO' as const, repo }))
+          .map((ghRepo) => ({ type: 'GH_REPO' as const, repo: ghRepo }))
           .mapErr<AppError>(mapHttpErrorToAppError),
       );
 
-    if (repo.isErr()) {
-      return err(repo.error);
+    if (repoResult.isErr()) {
+      return err(repoResult.error);
     }
 
     // 2. Create/update the repo in DB
-    const updatedRepoResult = await repo
+    const updatedRepoResult = await repoResult
       .asyncAndThen((res) => {
         switch (res.type) {
           case 'DB_REPO': {

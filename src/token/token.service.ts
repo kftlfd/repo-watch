@@ -74,7 +74,7 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
   }
 
   function getTokenUrl(token: string, type: TokenType): string {
-    const path = type === 'confirm' ? '/confirm' : '/unsubscribe';
+    const path = type === 'confirm' ? '/api/confirm' : '/api/unsubscribe';
     return `${env.BASE_URL}${path}/${token}`;
   }
 

@@ -125,7 +125,7 @@ describe('-- trying things out, can ignore --', () => {
 
     const result = await service.subscribe({
       email: 'test@test.com',
-      repoFullName: 'x/y',
+      repo: 'x/y',
     });
 
     const err = expectErr(result);

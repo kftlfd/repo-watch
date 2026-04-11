@@ -1,6 +1,5 @@
 import type { Config } from '@/config/config.js';
 import { createRedisCache } from '@/cache/redisCache.js';
-import { closeDB } from '@/db/client.js';
 import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
@@ -11,7 +10,7 @@ import { createReleaseNotificationsQueue } from '@/queue/release-notifications/r
 import { createReleaseNotificationsWorker } from '@/queue/release-notifications/release-notifications.worker.js';
 import { createRepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
-import { closeRedis, redis } from '@/redis/redis.js';
+import { redis } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
 import { createScannerService } from '@/scanner/scanner.service.js';
 import { createFastifyServer } from '@/server/server.js';
@@ -108,7 +107,5 @@ export function createApp(config: Config) {
     app,
     scannerService,
     createWorkers,
-    closeDB,
-    closeRedis,
   };
 }

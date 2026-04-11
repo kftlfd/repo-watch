@@ -1,13 +1,17 @@
 import { createApp } from '@/app.js';
 import { config } from '@/config/config.js';
 import { env } from '@/config/env.js';
+import { applyDBMigrations, closeDB } from '@/db/client.js';
+import { closeRedis } from '@/redis/redis.js';
 
 function bootstrap() {
-  const { logger, app, scannerService, createWorkers, closeDB, closeRedis } = createApp(config);
+  const { logger, app, scannerService, createWorkers } = createApp(config);
 
   let workers: ReturnType<typeof createWorkers> = [];
 
   async function start() {
+    await applyDBMigrations(config.migrations, logger);
+
     workers = createWorkers();
 
     return Promise.all([

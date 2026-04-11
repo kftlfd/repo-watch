@@ -1,3 +1,8 @@
+export type MigrationConfig = {
+  maxAttempts: number;
+  retryDelayMs: number;
+};
+
 export type GithubClientConfig = {
   baseUrl: string;
   cacheTtlSeconds: number;
@@ -44,6 +49,7 @@ export type RepoSubJobConfig = {
 };
 
 export type Config = {
+  migrations: MigrationConfig;
   githubClient: GithubClientConfig;
   repositoryRepo: RepositoryRepoConfig;
   scanner: ScannerConfig;
@@ -56,6 +62,10 @@ export type Config = {
 };
 
 export const config: Config = {
+  migrations: {
+    maxAttempts: 5,
+    retryDelayMs: 2000,
+  },
   githubClient: {
     baseUrl: 'https://api.github.com',
     cacheTtlSeconds: 600,

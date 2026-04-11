@@ -128,6 +128,13 @@ export function createScannerService({
   });
 
   let running = true;
+  let consecutiveErrors = 0;
+
+  // TODO: Add scanner health metrics for monitoring
+  // - lastSuccessfulScan timestamp
+  // - totalReposScanned counter
+  // - apiCallsPerScan average
+  // - reposWithNewReleases counter
 
   async function start() {
     log.info(
@@ -142,8 +149,21 @@ export function createScannerService({
           await processRepository(repo);
           await sleep(config.pollDelayMs);
         }
+
+        consecutiveErrors = 0;
       } catch (error) {
         log.error({ error }, 'Scanner error:');
+        consecutiveErrors++;
+
+        const backoffDelay = Math.min(
+          config.baseErrorDelayMs * Math.pow(2, consecutiveErrors - 1),
+          config.maxBackoffDelayMs,
+        );
+
+        log.info(
+          `Backing off for ${backoffDelay.toString()}ms after ${consecutiveErrors.toString()} consecutive errors`,
+        );
+        await sleep(backoffDelay);
       }
 
       await sleep(config.scanIntervalMs);

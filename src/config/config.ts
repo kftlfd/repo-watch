@@ -1,3 +1,5 @@
+import { env } from './env.js';
+
 export type MigrationConfig = {
   maxAttempts: number;
   retryDelayMs: number;
@@ -5,7 +7,9 @@ export type MigrationConfig = {
 
 export type GithubClientConfig = {
   baseUrl: string;
+  authToken?: string;
   cacheTtlSeconds: number;
+  timeoutMs: number;
 };
 
 export type RepositoryRepoConfig = {
@@ -17,6 +21,8 @@ export type ScannerConfig = {
   batchSize: number;
   pollDelayMs: number;
   initialRetryDelay: number;
+  baseErrorDelayMs: number;
+  maxBackoffDelayMs: number;
 };
 
 export type TokenServiceConfig = {
@@ -61,39 +67,45 @@ export type Config = {
   };
 };
 
+const hasGithubToken = !!env.GITHUB_TOKEN;
+
 export const config: Config = {
   migrations: {
     maxAttempts: 5,
-    retryDelayMs: 2000,
+    retryDelayMs: 2_000,
   },
   githubClient: {
     baseUrl: 'https://api.github.com',
-    cacheTtlSeconds: 600,
+    authToken: env.GITHUB_TOKEN,
+    cacheTtlSeconds: hasGithubToken ? 10 * 60 : 60 * 60,
+    timeoutMs: 30_000,
   },
   repositoryRepo: {
-    tagCacheTtlSeconds: 10 * 60,
+    tagCacheTtlSeconds: 60 * 60,
   },
   scanner: {
-    scanIntervalMs: 10 * 60 * 1000,
-    batchSize: 20,
-    pollDelayMs: 200,
-    initialRetryDelay: 1000,
+    scanIntervalMs: hasGithubToken ? 10 * 60_000 : 60 * 60_000,
+    batchSize: 10,
+    pollDelayMs: 1_000,
+    initialRetryDelay: 5_000,
+    baseErrorDelayMs: 5_000,
+    maxBackoffDelayMs: 30 * 60_000,
   },
   tokenService: {
     tokenExpiryHours: 24,
   },
   queues: {
     confirmationEmails: {
-      queue: { attempts: 3, expBackoffDelay: 1000 },
-      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1000 },
+      queue: { attempts: 3, expBackoffDelay: 1_000 },
+      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1_000 },
     },
     releaseNotifications: {
-      queue: { attempts: 2, expBackoffDelay: 1000 },
-      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1000 },
+      queue: { attempts: 2, expBackoffDelay: 1_000 },
+      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1_000 },
     },
     repoSubscriptions: {
-      queue: { attempts: 2, expBackoffDelay: 1000 },
-      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1000 },
+      queue: { attempts: 2, expBackoffDelay: 1_000 },
+      worker: { concurrency: 1, limiterMax: 1, limiterDuration: 1_000 },
       job: { batchSize: 20, pollDelayMs: 200 },
     },
   },

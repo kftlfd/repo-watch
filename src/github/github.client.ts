@@ -3,7 +3,6 @@ import { z, ZodType } from 'zod';
 
 import type { GithubClientConfig } from '@/config/config.js';
 import type { HttpError } from '@/utils/errors.js';
-import { env } from '@/config/env.js';
 import { parseRetryAfter } from '@/utils/errors.js';
 
 import type { Repo } from './github.schema.js';
@@ -13,45 +12,6 @@ export type GithubClient = {
   getRepo(owner: string, repo: string): ResultAsync<Repo, HttpError>;
   getLatestRelease(owner: string, repo: string): ResultAsync<string, HttpError>;
 };
-
-function getHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-  if (env.GITHUB_TOKEN) {
-    headers['Authorization'] = `Bearer ${env.GITHUB_TOKEN}`;
-  }
-  return headers;
-}
-
-function httpGet<TSchema extends ZodType>(
-  url: string,
-  bodySchema: TSchema,
-): ResultAsync<z.infer<TSchema>, HttpError> {
-  const response = ResultAsync.fromPromise(
-    fetch(url, { headers: getHeaders() }),
-    (): HttpError => ({ type: 'NetworkError', message: 'Failed to fetch' }),
-  );
-
-  const checked = response.andThen((resp) => (resp.ok ? ok(resp) : err(mapResponseToError(resp))));
-
-  const jsonData = checked.andThen((resp) =>
-    ResultAsync.fromPromise(
-      resp.json(),
-      (): HttpError => ({ type: 'BadResponse', message: 'Failed to parse json' }),
-    ),
-  );
-
-  const parsedBody = jsonData.andThen((resp) => {
-    const result = bodySchema.safeParse(resp);
-    return result.success
-      ? ok(result.data)
-      : err({ type: 'BadResponse', message: 'Failed to validate body' } as HttpError);
-  });
-
-  return parsedBody;
-}
 
 function mapResponseToError(response: Response): HttpError {
   if (response.status === 404) {
@@ -70,6 +30,47 @@ function mapResponseToError(response: Response): HttpError {
 }
 
 export function createGithubClient(config: GithubClientConfig): GithubClient {
+  function getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    };
+    if (config.authToken) {
+      headers['Authorization'] = `Bearer ${config.authToken}`;
+    }
+    return headers;
+  }
+
+  function httpGet<TSchema extends ZodType>(
+    url: string,
+    bodySchema: TSchema,
+  ): ResultAsync<z.infer<TSchema>, HttpError> {
+    const response = ResultAsync.fromPromise(
+      fetch(url, { headers: getHeaders(), signal: AbortSignal.timeout(config.timeoutMs) }),
+      (): HttpError => ({ type: 'NetworkError', message: 'Failed to fetch' }),
+    );
+
+    const checked = response.andThen((resp) =>
+      resp.ok ? ok(resp) : err(mapResponseToError(resp)),
+    );
+
+    const jsonData = checked.andThen((resp) =>
+      ResultAsync.fromPromise(
+        resp.json(),
+        (): HttpError => ({ type: 'BadResponse', message: 'Failed to parse json' }),
+      ),
+    );
+
+    const parsedBody = jsonData.andThen((resp) => {
+      const result = bodySchema.safeParse(resp);
+      return result.success
+        ? ok(result.data)
+        : err({ type: 'BadResponse', message: 'Failed to validate body' } as HttpError);
+    });
+
+    return parsedBody;
+  }
+
   function getRepo(owner: string, repo: string) {
     return httpGet(`${config.baseUrl}/repos/${owner}/${repo}`, RepoSchema);
   }

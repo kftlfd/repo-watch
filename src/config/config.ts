@@ -43,7 +43,7 @@ export type RepoSubJobConfig = {
   pollDelayMs: number;
 };
 
-type Config = {
+export type Config = {
   githubClient: GithubClientConfig;
   repositoryRepo: RepositoryRepoConfig;
   scanner: ScannerConfig;

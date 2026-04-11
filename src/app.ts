@@ -1,6 +1,5 @@
+import type { Config } from '@/config/config.js';
 import { createRedisCache } from '@/cache/redisCache.js';
-import { config } from '@/config/config.js';
-import { env } from '@/config/env.js';
 import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
@@ -21,7 +20,7 @@ import { createSubscriptionService } from '@/subscription/subscription.service.j
 import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
 
-function createApp() {
+export function createApp(config: Config) {
   // infra
   const logger = createLogger();
   const cache = createRedisCache(redis);
@@ -110,25 +109,3 @@ function createApp() {
     logger,
   };
 }
-
-function bootstrap() {
-  const { app, scannerService, logger } = createApp();
-
-  async function start() {
-    return Promise.all([
-      scannerService.start(),
-
-      app.listen({
-        host: env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0',
-        port: 3000,
-      }),
-    ]);
-  }
-
-  start().catch((err: unknown) => {
-    logger.error(err, 'Bootstrap fail');
-    process.exit(1);
-  });
-}
-
-bootstrap();

@@ -23,6 +23,7 @@
     "fmt": "prettier -w ."
   },
   "dependencies": {
+    "@fastify/formbody": "8.0.2",
     "bullmq": "5.73.2",
     "dotenv": "17.4.1",
     "drizzle-orm": "0.45.2",

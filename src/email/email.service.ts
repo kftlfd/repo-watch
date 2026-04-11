@@ -5,6 +5,23 @@ import type { AppError } from '@/utils/errors.js';
 import type { ConfirmationEmailData, ReleaseEmailData } from './templates.js';
 import { renderConfirmationEmail, renderReleaseEmail } from './templates.js';
 
+// TODO: Actual email delivery
+// 1. Create Email Transport Abstraction (src/email/email.transport.ts)
+//    - EmailTransport interface: { send(to, from, subject, html): Promise<void> }
+//    - createSMTPTransport(config) using nodemailer
+//    - createConsoleTransport() for development
+//    - add EmailTransport dependency to EmailService
+// 2. Add SMTP Configuration
+//    - env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE
+//    - EmailConfig (fromAddress and optional smtp settings)
+// 3. Wire in App.ts
+//    - Choose transport based on environment/config
+//    - Use SMTP if configured, otherwise console transport
+// Error Handling:
+//    - SMTP connection/auth failures → External error → queue retries
+//    - Invalid recipients → External error → may need manual intervention
+//    - Rate limiting → External error → queue retries with backoff
+
 export type Email =
   | { type: 'confirmation'; data: ConfirmationEmailData }
   | { type: 'release'; data: ReleaseEmailData };

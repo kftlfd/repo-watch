@@ -26,6 +26,8 @@ export type ScannerConfig = {
 };
 
 export type TokenServiceConfig = {
+  baseUrl: string;
+  serverSecret: string;
   tokenExpiryHours: number;
 };
 
@@ -113,6 +115,8 @@ export const config: Config = {
     maxBackoffDelayMs: 30 * 60_000,
   },
   tokenService: {
+    baseUrl: env.BASE_URL,
+    serverSecret: env.SERVER_SECRET,
     tokenExpiryHours: 24,
   },
   queues: {

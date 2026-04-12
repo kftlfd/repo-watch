@@ -4,7 +4,6 @@ import { err, ok, ResultAsync } from 'neverthrow';
 import type { TokenServiceConfig } from '@/config/config.js';
 import type { Token, TokenRepo } from '@/token/token.repo.js';
 import type { AppError } from '@/utils/errors.js';
-import { env } from '@/config/env.js';
 import { toAppError } from '@/utils/errors.js';
 
 export type TokenType = 'confirm' | 'unsubscribe';
@@ -31,16 +30,16 @@ function generateToken(): string {
   return randomBytes(32).toString('hex');
 }
 
-function hashToken(token: string): string {
-  return createHmac('sha256', env.SERVER_SECRET).update(token).digest('hex');
-}
-
 type Deps = {
   config: TokenServiceConfig;
   tokenRepo: TokenRepo;
 };
 
 export function createTokenService({ config, tokenRepo }: Deps): TokenService {
+  function hashToken(token: string): string {
+    return createHmac('sha256', config.serverSecret).update(token).digest('hex');
+  }
+
   async function createToken(options: CreateTokenOptions): Promise<string> {
     const token = generateToken();
     const tokenHash = hashToken(token);
@@ -77,8 +76,8 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
     const apiPath = type === 'confirm' ? '/api/confirm' : '/api/unsubscribe';
     const htmlPath = type === 'confirm' ? '/confirm' : '/unsubscribe';
     return {
-      apiUrl: `${env.BASE_URL}${apiPath}/${token}`,
-      htmlUrl: `${env.BASE_URL}${htmlPath}/${token}`,
+      apiUrl: `${config.baseUrl}${apiPath}/${token}`,
+      htmlUrl: `${config.baseUrl}${htmlPath}/${token}`,
     };
   }
 

@@ -1,5 +1,6 @@
-import type { FastifyPluginCallback } from 'fastify';
+import type { FastifyPluginCallback, FastifyReply } from 'fastify';
 
+import type { AppError } from '@/utils/errors.js';
 import { mapErrorToHttp } from '@/utils/errors.js';
 
 import type { SubscriptionController } from './subscription.controller.js';
@@ -10,6 +11,21 @@ type Deps = {
 
 export function createSubscriptionApi({ subscriptionController }: Deps): FastifyPluginCallback {
   return function subscriptionApiRoutes(fastify, _opts, done) {
+    function sendAppError(reply: FastifyReply, error: AppError) {
+      const statusCode = mapErrorToHttp(error);
+
+      const retryAfter =
+        error.type === 'RateLimited' && error.retryAfterSeconds !== null
+          ? error.retryAfterSeconds.toString()
+          : null;
+
+      if (retryAfter) {
+        reply.header('Retry-After', retryAfter);
+      }
+
+      return reply.code(statusCode).send(error);
+    }
+
     fastify.post('/subscribe', async (req, reply) => {
       const result = await subscriptionController.subscribe(req.body);
 
@@ -17,9 +33,8 @@ export function createSubscriptionApi({ subscriptionController }: Deps): Fastify
         () =>
           reply.code(200).send({ message: 'Subscription successful. Confirmation email sent.' }),
         (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'Subscription service error');
-          return reply.code(statusCode).send(error);
+          req.log.error({ error }, 'Subscription service error');
+          return sendAppError(reply, error);
         },
       );
     });
@@ -31,9 +46,8 @@ export function createSubscriptionApi({ subscriptionController }: Deps): Fastify
       return result.match(
         () => reply.code(200).send({ message: 'Subscription confirmed successfully.' }),
         (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'Confirm service error');
-          return reply.code(statusCode).send(error);
+          req.log.error({ error }, 'Confirm service error');
+          return sendAppError(reply, error);
         },
       );
     });
@@ -45,9 +59,8 @@ export function createSubscriptionApi({ subscriptionController }: Deps): Fastify
       return result.match(
         () => reply.code(200).send({ message: 'Unsubscribed successfully.' }),
         (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'Unsubscribe service error');
-          return reply.code(statusCode).send(error);
+          req.log.error({ error }, 'Unsubscribe service error');
+          return sendAppError(reply, error);
         },
       );
     });
@@ -75,9 +88,8 @@ export function createSubscriptionApi({ subscriptionController }: Deps): Fastify
           return reply.code(200).send(response);
         },
         (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'List subscriptions service error');
-          return reply.code(statusCode).send(error);
+          req.log.error({ error }, 'List subscriptions service error');
+          return sendAppError(reply, error);
         },
       );
     });

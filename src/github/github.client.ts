@@ -3,37 +3,20 @@ import { z, ZodType } from 'zod';
 
 import type { GithubClientConfig } from '@/config/config.js';
 import type { HttpError } from '@/utils/errors.js';
-import { parseRetryAfter } from '@/utils/errors.js';
 
 import type { Repo } from './github.schema.js';
 import { ReleaseSchema, RepoSchema, TagSchema } from './github.schema.js';
+import { mapResponseToError } from './utils.js';
 
 export type GithubClient = {
   getRepo(owner: string, repo: string): ResultAsync<Repo, HttpError>;
   getLatestRelease(owner: string, repo: string): ResultAsync<string, HttpError>;
 };
 
-function mapResponseToError(response: Response): HttpError {
-  if (response.status === 404) {
-    return { type: 'NotFound', message: 'Resource not found' };
-  }
-  if (response.status === 401 || response.status === 403) {
-    return { type: 'Unauthorized', message: 'Authentication failed' };
-  }
-  if (response.status === 429) {
-    return {
-      type: 'TooManyRequests',
-      retryAfter: parseRetryAfter(response.headers.get('retry-after')),
-    };
-  }
-  return { type: 'Unknown', statusCode: response.status, message: response.statusText };
-}
-
 export function createGithubClient(config: GithubClientConfig): GithubClient {
   function getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
-      'Accept': 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
+      Accept: 'application/json',
     };
     if (config.authToken) {
       headers['Authorization'] = `Bearer ${config.authToken}`;
@@ -50,9 +33,7 @@ export function createGithubClient(config: GithubClientConfig): GithubClient {
       (): HttpError => ({ type: 'NetworkError', message: 'Failed to fetch' }),
     );
 
-    const checked = response.andThen((resp) =>
-      resp.ok ? ok(resp) : err(mapResponseToError(resp)),
-    );
+    const checked = response.andThen((resp) => (resp.ok ? ok(resp) : mapResponseToError(resp)));
 
     const jsonData = checked.andThen((resp) =>
       ResultAsync.fromPromise(

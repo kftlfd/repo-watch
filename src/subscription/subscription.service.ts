@@ -36,7 +36,12 @@ function mapHttpErrorToAppError(error: HttpError): AppError {
     case 'Unknown':
       return { type: 'External', service: 'github', message: error.message };
     case 'TooManyRequests':
-      return { type: 'External', service: 'github', message: 'Rate limited by GitHub' };
+      return {
+        type: 'RateLimited',
+        service: 'github',
+        message: 'Rate limited by GitHub',
+        retryAfterSeconds: error.retryAfterSeconds,
+      };
     default:
       error satisfies never;
       return { type: 'Internal', message: 'Unknown error' };

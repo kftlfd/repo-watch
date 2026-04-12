@@ -3,7 +3,13 @@ export type AppError =
   | { type: 'NotFound'; message: string }
   | { type: 'Conflict'; message: string }
   | { type: 'External'; service: 'github' | 'email'; message: string }
-  | { type: 'Internal'; message: string };
+  | { type: 'Internal'; message: string }
+  | {
+      type: 'RateLimited';
+      service: 'github' | 'email';
+      message: string;
+      retryAfterSeconds: number | null;
+    };
 
 export function mapErrorToHttp(error: AppError): number {
   switch (error.type) {
@@ -16,6 +22,11 @@ export function mapErrorToHttp(error: AppError): number {
     case 'External':
       return 502;
     case 'Internal':
+      return 500;
+    case 'RateLimited':
+      return 503;
+    default:
+      error satisfies never;
       return 500;
   }
 }
@@ -44,25 +55,5 @@ export type HttpError =
   | { type: 'NotFound'; message: string }
   | { type: 'BadResponse'; message: string }
   | { type: 'Unauthorized'; message: string }
-  | { type: 'TooManyRequests'; retryAfter: number | null }
+  | { type: 'TooManyRequests'; retryAfterSeconds: number | null }
   | { type: 'Unknown'; statusCode: number; message: string };
-
-export function parseRetryAfter(header: string | null | undefined): number | null {
-  if (!header) return null;
-
-  // Case 1: seconds
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) {
-    return Math.max(0, seconds * 1000);
-  }
-
-  // Case 2: HTTP date
-  const date = new Date(header);
-  const timestamp = date.getTime();
-  if (Number.isFinite(timestamp)) {
-    const diff = timestamp - Date.now();
-    return Math.max(0, diff);
-  }
-
-  return null;
-}

@@ -49,7 +49,10 @@ function createProcessReleaseNotificationJob({
       repositoryId: repoId,
       type: 'unsubscribe',
     });
-    const unsubscribeUrl = tokenService.getTokenUrl(token, 'unsubscribe');
+    const { htmlUrl: unsubscribeHtmlUrl, apiUrl: unsubscribeApiUrl } = tokenService.getTokenUrls(
+      token,
+      'unsubscribe',
+    );
 
     const sendResult = await emailService.sendEmail(email, {
       type: 'release',
@@ -57,7 +60,8 @@ function createProcessReleaseNotificationJob({
         repoName,
         tag: jobTag,
         releaseUrl: `https://github.com/${repoName}/releases/tag/${jobTag}`,
-        unsubscribeUrl,
+        unsubscribeHtmlUrl,
+        unsubscribeApiUrl,
       },
     });
 

@@ -1,100 +1,81 @@
-import type { FastifyPluginCallback } from 'fastify';
+import { err, ok, Result } from 'neverthrow';
 
-import { mapErrorToHttp } from '@/utils/errors.js';
+import type { AppError } from '@/utils/errors.js';
 
+import type { SubscriptionsListItem } from './subscription.repo.js';
 import type { SubscriptionService } from './subscription.service.js';
 import { EmailSchema, SubscribeInputSchema } from './subscription.schema.js';
 
-export function createSubscriptionController(
-  subscriptionService: SubscriptionService,
-): FastifyPluginCallback {
-  return function subscriptionRoutes(fastify, opts, done) {
-    fastify.post('/subscribe', async (req, reply) => {
-      const parsed = SubscribeInputSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ message: 'Invalid input' });
-      }
+export type SubscribeInput = {
+  email: string;
+  repo: string;
+};
 
-      const result = await subscriptionService.subscribe(parsed.data);
+export type SubscriptionController = {
+  subscribe(body: unknown): Promise<Result<void, AppError>>;
+  confirm(token: string): Promise<Result<void, AppError>>;
+  unsubscribe(token: string): Promise<Result<void, AppError>>;
+  listSubscriptions(email: string): Promise<Result<SubscriptionsListItem[], AppError>>;
+};
 
-      return result.match(
-        () =>
-          reply.code(200).send({ message: 'Subscription successful. Confirmation email sent.' }),
-        (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'Subscription service error');
-          return reply.code(statusCode).send(error);
-        },
-      );
-    });
+type Deps = {
+  subscriptionService: SubscriptionService;
+};
 
-    fastify.get<{ Params: { token: string } }>('/confirm/:token', async (req, reply) => {
-      const { token } = req.params;
-      const result = await subscriptionService.confirm(token);
+// Shared helper for validating tokens
+function validateToken(token: string): Result<string, AppError> {
+  if (!token || token.length < 10) {
+    return err({ type: 'Validation', message: 'Invalid token' } as AppError);
+  }
+  return ok(token);
+}
 
-      return result.match(
-        () => reply.code(200).send({ message: 'Subscription confirmed successfully.' }),
-        (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'Confirm service error');
-          return reply.code(statusCode).send(error);
-        },
-      );
-    });
+export function createSubscriptionController({
+  subscriptionService,
+}: Deps): SubscriptionController {
+  async function subscribe(body: unknown): Promise<Result<void, AppError>> {
+    // Parse and validate input inline
+    const parsed = SubscribeInputSchema.safeParse(body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? 'Invalid input';
+      return err({ type: 'Validation', message } as AppError);
+    }
 
-    fastify.get<{ Params: { token: string } }>('/unsubscribe/:token', async (req, reply) => {
-      const { token } = req.params;
-      const result = await subscriptionService.unsubscribe(token);
+    return subscriptionService.subscribe(parsed.data);
+  }
 
-      return result.match(
-        () => reply.code(200).send({ message: 'Unsubscribed successfully.' }),
-        (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'Unsubscribe service error');
-          return reply.code(statusCode).send(error);
-        },
-      );
-    });
+  async function confirm(token: string): Promise<Result<void, AppError>> {
+    const validated = validateToken(token);
+    if (validated.isErr()) return err(validated.error);
 
-    fastify.get<{ Querystring: { email?: string } }>('/subscriptions', async (req, reply) => {
-      const email = req.query.email;
-      if (!email) {
-        return reply.code(400).send({ message: 'Email parameter is required' });
-      }
+    return subscriptionService.confirm(validated.value);
+  }
 
-      if (!EmailSchema.safeParse(email).success) {
-        return reply.code(400).send({ message: 'Invalid email' });
-      }
+  async function unsubscribe(token: string): Promise<Result<void, AppError>> {
+    const validated = validateToken(token);
+    if (validated.isErr()) return err(validated.error);
 
-      const result = await subscriptionService.listSubscriptions(email);
+    return subscriptionService.unsubscribe(validated.value);
+  }
 
-      return result.match(
-        (subscriptions) => {
-          // Swagger schema requires string type for last_seen_tag (not nullable).
-          // We convert null from the database to empty string to comply with the API contract.
-          type SubscriptionsListItem = {
-            email: string;
-            repo: string;
-            confirmed: boolean;
-            last_seen_tag: string;
-          };
+  async function listSubscriptions(
+    email: string,
+  ): Promise<Result<SubscriptionsListItem[], AppError>> {
+    if (!email) {
+      return err({ type: 'Validation', message: 'Email parameter is required' } as AppError);
+    }
 
-          const response: SubscriptionsListItem[] = subscriptions.map((sub) => ({
-            email: sub.email,
-            repo: sub.repo,
-            confirmed: sub.confirmed,
-            last_seen_tag: sub.last_seen_tag ?? '',
-          }));
-          return reply.code(200).send(response);
-        },
-        (error) => {
-          const statusCode = mapErrorToHttp(error);
-          req.log.error({ error, statusCode }, 'List subscriptions service error');
-          return reply.code(statusCode).send(error);
-        },
-      );
-    });
+    if (!EmailSchema.safeParse(email).success) {
+      return err({ type: 'Validation', message: 'Invalid email' } as AppError);
+    }
 
-    done();
+    return subscriptionService.listSubscriptions(email);
+  }
+
+  return {
+    subscribe,
+    confirm,
+    unsubscribe,
+    listSubscriptions,
   };
 }

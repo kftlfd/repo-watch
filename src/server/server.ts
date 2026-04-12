@@ -6,23 +6,19 @@ import type { Logger } from '@/logger/logger.js';
 
 type Deps = {
   logger: Logger;
-  subscriptionController: FastifyPluginCallback;
+  subscriptionApi: FastifyPluginCallback;
+  subscriptionWeb: FastifyPluginCallback;
 };
 
-export function createFastifyServer({ logger, subscriptionController }: Deps) {
+export function createFastifyServer({ logger, subscriptionApi, subscriptionWeb }: Deps) {
   const app = Fastify({
     loggerInstance: logger,
   });
 
-  // Register formbody plugin to support application/x-www-form-urlencoded
-  // This allows the subscribe endpoint to accept both JSON and form data
   app.register(formbody);
 
-  app.get('/', function handler() {
-    return { hello: 'world' };
-  });
-
-  app.register(subscriptionController, { prefix: '/api' });
+  app.register(subscriptionApi, { prefix: '/api' });
+  app.register(subscriptionWeb);
 
   return app;
 }

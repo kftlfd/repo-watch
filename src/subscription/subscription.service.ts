@@ -170,12 +170,16 @@ export function createSubscriptionService({
 
     // 5. Enqueue confirmation email
     const emailOk = tokenResult.andThen((token) => {
-      const confirmUrl = tokenService.getTokenUrl(token, 'confirm');
+      const { htmlUrl: confirmHtmlUrl, apiUrl: confirmApiUrl } = tokenService.getTokenUrls(
+        token,
+        'confirm',
+      );
       return ResultAsync.fromPromise(
         confirmationEmailsQueue.enqueueConfirmationEmail({
           email,
           repoName: repoFullName,
-          confirmUrl,
+          confirmHtmlUrl,
+          confirmApiUrl,
         }),
         (): AppError => ({ type: 'Internal', message: 'Failed to enqueue confirmation email' }),
       );

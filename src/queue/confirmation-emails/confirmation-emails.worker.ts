@@ -17,13 +17,14 @@ type ProcessJobDeps = {
 
 function createProcessConfirmationEmailJob({ log, emailService }: ProcessJobDeps): ProcessJobFn {
   return async function processJob(job) {
-    const { email, repoName, confirmUrl } = job.data;
+    const { email, repoName, confirmHtmlUrl, confirmApiUrl } = job.data;
 
     const sendResult = await emailService.sendEmail(email, {
       type: 'confirmation',
       data: {
         repoName,
-        confirmUrl,
+        confirmHtmlUrl,
+        confirmApiUrl,
       },
     });
 

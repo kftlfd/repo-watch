@@ -47,7 +47,7 @@ export function createMockTokenService(overrides?: Partial<TokenService>): Token
   return {
     createToken: vi.fn(),
     deleteToken: vi.fn(),
-    getTokenUrl: vi.fn(),
+    getTokenUrls: vi.fn(),
     validateToken: vi.fn(),
     ...overrides,
   };

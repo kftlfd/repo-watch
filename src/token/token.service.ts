@@ -15,10 +15,15 @@ interface CreateTokenOptions {
   type: TokenType;
 }
 
+export type TokenUrls = {
+  apiUrl: string;
+  htmlUrl: string;
+};
+
 export type TokenService = {
   createToken(options: CreateTokenOptions): Promise<string>;
   validateToken(token: string, type: TokenType): ResultAsync<Token, AppError>;
-  getTokenUrl(token: string, type: TokenType): string;
+  getTokenUrls(token: string, type: TokenType): TokenUrls;
   deleteToken(tokenId: number): Promise<void>;
 };
 
@@ -68,9 +73,13 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
     });
   }
 
-  function getTokenUrl(token: string, type: TokenType): string {
-    const path = type === 'confirm' ? '/api/confirm' : '/api/unsubscribe';
-    return `${env.BASE_URL}${path}/${token}`;
+  function getTokenUrls(token: string, type: TokenType): TokenUrls {
+    const apiPath = type === 'confirm' ? '/api/confirm' : '/api/unsubscribe';
+    const htmlPath = type === 'confirm' ? '/confirm' : '/unsubscribe';
+    return {
+      apiUrl: `${env.BASE_URL}${apiPath}/${token}`,
+      htmlUrl: `${env.BASE_URL}${htmlPath}/${token}`,
+    };
   }
 
   async function deleteToken(tokenId: number): Promise<void> {
@@ -80,7 +89,7 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
   return {
     createToken,
     validateToken,
-    getTokenUrl,
+    getTokenUrls,
     deleteToken,
   };
 }

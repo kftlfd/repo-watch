@@ -7,11 +7,12 @@ type EmailRenderResult = {
 
 export type ConfirmationEmailData = {
   repoName: string;
-  confirmUrl: string;
+  confirmHtmlUrl: string;
+  confirmApiUrl: string;
 };
 
 export function renderConfirmationEmail(data: ConfirmationEmailData) {
-  const { repoName, confirmUrl } = data;
+  const { repoName, confirmHtmlUrl, confirmApiUrl } = data;
   const subject = escapeHtmlTemplate`Confirm subscription to ${repoName}`;
   const html = escapeHtmlTemplate`<!DOCTYPE html>
 <html>
@@ -21,8 +22,10 @@ export function renderConfirmationEmail(data: ConfirmationEmailData) {
 </head>
 <body>
   <h1>Confirm your subscription</h1>
-  <p>Click the link below to confirm your subscription to <strong>${repoName}</strong>:</p>
-  <p><a href="${confirmUrl}">${confirmUrl}</a></p>
+  <p>Click one the link below to confirm your subscription to <strong>${repoName}</strong>:</p>
+  <p><a href="${confirmHtmlUrl}">${confirmHtmlUrl}</a></p>
+  <hr>
+  <p>Or use API URL: <a href="${confirmApiUrl}">${confirmApiUrl}</a></p>
 </body>
 </html>`;
   return { subject, html } as EmailRenderResult;
@@ -32,11 +35,12 @@ export type ReleaseEmailData = {
   repoName: string;
   tag: string;
   releaseUrl: string;
-  unsubscribeUrl: string;
+  unsubscribeHtmlUrl: string;
+  unsubscribeApiUrl: string;
 };
 
 export function renderReleaseEmail(data: ReleaseEmailData) {
-  const { repoName, tag, releaseUrl, unsubscribeUrl } = data;
+  const { repoName, tag, releaseUrl, unsubscribeHtmlUrl, unsubscribeApiUrl } = data;
   const subject = escapeHtmlTemplate`New release for ${repoName}: ${tag}`;
   const html = escapeHtmlTemplate`<!DOCTYPE html>
 <html>
@@ -45,11 +49,12 @@ export function renderReleaseEmail(data: ReleaseEmailData) {
   <title>${subject}</title>
 </head>
 <body>
-  <h1>New release: ${repoName} ${tag}</h1>
-  <p>A new release has been published for <strong>${repoName}</strong>.</p>
+  <h1>New release: ${repoName}@${tag}</h1>
+  <p>A new release has been published for <strong>${repoName}</strong>: <strong>${tag}</strong>.</p>
   <p><a href="${releaseUrl}">View release on GitHub</a></p>
   <hr>
-  <p><a href="${unsubscribeUrl}">Unsubscribe from ${repoName} updates</a></p>
+  <p><a href="${unsubscribeHtmlUrl}">Unsubscribe</a></p>
+  <p>Unsubscribe API URL: <a href="${unsubscribeApiUrl}">${unsubscribeApiUrl}</a></p>
 </body>
 </html>`;
   return { subject, html } as EmailRenderResult;

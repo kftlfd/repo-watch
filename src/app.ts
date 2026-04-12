@@ -14,9 +14,11 @@ import { redis } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
 import { createScannerService } from '@/scanner/scanner.service.js';
 import { createFastifyServer } from '@/server/server.js';
+import { createSubscriptionApi } from '@/subscription/subscription.api.js';
 import { createSubscriptionController } from '@/subscription/subscription.controller.js';
 import { createSubscriptionRepo } from '@/subscription/subscription.repo.js';
 import { createSubscriptionService } from '@/subscription/subscription.service.js';
+import { createSubscriptionWeb } from '@/subscription/subscription.web.js';
 import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
 
@@ -100,8 +102,10 @@ export function createApp(config: Config) {
   ];
 
   // server
-  const subscriptionController = createSubscriptionController(subscriptionService);
-  const app = createFastifyServer({ logger, subscriptionController });
+  const subscriptionController = createSubscriptionController({ subscriptionService });
+  const subscriptionApi = createSubscriptionApi({ subscriptionController });
+  const subscriptionWeb = createSubscriptionWeb({ subscriptionController });
+  const app = createFastifyServer({ logger, subscriptionApi, subscriptionWeb });
 
   return {
     logger,

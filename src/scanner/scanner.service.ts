@@ -39,8 +39,8 @@ export function createFetchWithRetryFn({
         return err(error);
       }
 
-      let retryDelayMs = error.retryAfterSeconds;
-      if (!retryDelayMs) {
+      let retryDelayMs = error.retryAfterSeconds === null ? null : error.retryAfterSeconds * 1_000;
+      if (retryDelayMs === null) {
         retryDelayMs = delayMs;
         delayMs *= 2;
       }

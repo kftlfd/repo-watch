@@ -19,7 +19,7 @@ type ProcessJobDeps = {
   tokenService: TokenService;
 };
 
-function createProcessReleaseNotificationJob({
+export function createProcessReleaseNotificationJob({
   log,
   emailService,
   repositoryRepo,

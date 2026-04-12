@@ -21,7 +21,7 @@ type ProcessJobDeps = {
   releaseNotificationsQueue: ReleaseNotificationsQueue;
 };
 
-function createProcessRepoSubscriptionJob({
+export function createProcessRepoSubscriptionJob({
   config,
   log,
   repositoryRepo,

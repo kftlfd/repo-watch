@@ -15,7 +15,10 @@ type ProcessJobDeps = {
   emailService: EmailService;
 };
 
-function createProcessConfirmationEmailJob({ log, emailService }: ProcessJobDeps): ProcessJobFn {
+export function createProcessConfirmationEmailJob({
+  log,
+  emailService,
+}: ProcessJobDeps): ProcessJobFn {
   return async function processJob(job) {
     const { email, repoName, confirmHtmlUrl, confirmApiUrl } = job.data;
 

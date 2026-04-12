@@ -181,29 +181,41 @@ export function createSubscriptionService({
   }
 
   function confirm(token: string) {
-    const tokenResult = tokenService.validateToken(token, 'confirm');
-
-    return tokenResult
+    return tokenService
+      .validateToken(token, 'confirm')
       .andThen((token) =>
         ResultAsync.fromPromise(
           subscriptionRepo.findActiveByEmailAndRepoId(token.email, token.repositoryId),
-          () => ({ type: 'Internal', message: 'DB error' }) as AppError,
+          (): AppError => ({ type: 'Internal', message: 'DB error' }),
+        ).andThen((sub) =>
+          sub
+            ? ok({ token, sub })
+            : err<never, AppError>({ type: 'NotFound', message: 'Subscription not found' }),
         ),
       )
-      .andThen((sub) =>
-        sub ? ok(sub) : err({ type: 'NotFound', message: 'Subscription not found' } as AppError),
-      )
-      .andThen((sub) =>
+      .andThen(({ token, sub }) =>
         ResultAsync.fromPromise(
           subscriptionRepo.update(sub.id, { confirmedAt: new Date(), removedAt: null }),
-          () => ({ type: 'Internal', message: 'DB error' }) as AppError,
+          (): AppError => ({ type: 'Internal', message: 'DB error' }),
+        ).andThen((sub) =>
+          sub
+            ? ok({ token })
+            : err<never, AppError>({ type: 'Internal', message: 'Failed to update subscription' }),
         ),
       )
-      .andTee(() => {
-        tokenResult.andTee((token) => {
-          tokenService.deleteToken(token.id).catch((error: unknown) => {
-            log.error({ error }, 'DB Error: failed to delete token');
-          });
+      .andThen(({ token }) =>
+        ResultAsync.fromPromise(
+          repositoryRepo.update(token.repositoryId, { isActive: true }),
+          (): AppError => ({ type: 'Internal', message: 'DB error' }),
+        ).andThen((repo) =>
+          repo
+            ? ok({ token })
+            : err<never, AppError>({ type: 'Internal', message: 'Failed to activate repository' }),
+        ),
+      )
+      .andTee(({ token }) => {
+        tokenService.deleteToken(token.id).catch((error: unknown) => {
+          log.error({ error }, 'DB Error: failed to delete token');
         });
       })
       .andThen(() => ok());

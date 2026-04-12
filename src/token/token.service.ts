@@ -16,10 +16,7 @@ interface CreateTokenOptions {
 }
 
 export type TokenService = {
-  createToken(options: CreateTokenOptions): Promise<{
-    token: string;
-    tokenHash: string;
-  }>;
+  createToken(options: CreateTokenOptions): Promise<string>;
   validateToken(token: string, type: TokenType): ResultAsync<Token, AppError>;
   getTokenUrl(token: string, type: TokenType): string;
   deleteToken(tokenId: number): Promise<void>;
@@ -39,9 +36,7 @@ type Deps = {
 };
 
 export function createTokenService({ config, tokenRepo }: Deps): TokenService {
-  async function createToken(
-    options: CreateTokenOptions,
-  ): Promise<{ token: string; tokenHash: string }> {
+  async function createToken(options: CreateTokenOptions): Promise<string> {
     const token = generateToken();
     const tokenHash = hashToken(token);
 
@@ -56,7 +51,7 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
       expiresAt,
     });
 
-    return { token, tokenHash };
+    return token;
   }
 
   function validateToken(token: string, type: TokenType): ResultAsync<Token, AppError> {

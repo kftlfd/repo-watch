@@ -170,7 +170,7 @@ export function createSubscriptionService({
 
     // 5. Enqueue confirmation email
     const emailOk = tokenResult.andThen((token) => {
-      const confirmUrl = tokenService.getTokenUrl(token.token, 'confirm');
+      const confirmUrl = tokenService.getTokenUrl(token, 'confirm');
       return ResultAsync.fromPromise(
         confirmationEmailsQueue.enqueueConfirmationEmail({
           email,

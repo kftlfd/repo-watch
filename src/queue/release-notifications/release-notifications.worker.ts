@@ -44,12 +44,12 @@ function createProcessReleaseNotificationJob({
       return;
     }
 
-    const tokenResult = await tokenService.createToken({
+    const token = await tokenService.createToken({
       email,
       repositoryId: repoId,
       type: 'unsubscribe',
     });
-    const unsubscribeUrl = tokenService.getTokenUrl(tokenResult.token, 'unsubscribe');
+    const unsubscribeUrl = tokenService.getTokenUrl(token, 'unsubscribe');
 
     const sendResult = await emailService.sendEmail(email, {
       type: 'release',

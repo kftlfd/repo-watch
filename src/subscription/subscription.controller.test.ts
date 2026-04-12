@@ -1,32 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import type { SubscriptionService } from '@/subscription/subscription.service.js';
+import { createSubscriptionController } from './subscription.controller.js';
+import { createMockSubscriptionService } from '@/test/mocks.js';
 
 describe('Subscription Controller', () => {
-  describe('POST /api/subscribe', () => {
-    it('accepts valid input', async () => {
-      const mockService: SubscriptionService = {
-        subscribe: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-        confirm: vi.fn(),
-        unsubscribe: vi.fn(),
-        listSubscriptions: vi.fn(),
-      };
+  it('Shoud create without errors', () => {
+    const subscriptionService = createMockSubscriptionService();
 
-      const result = await mockService.subscribe({
-        email: 'test@example.com',
-        repo: 'owner/repository',
-      });
+    const controller = createSubscriptionController({ subscriptionService });
 
-      expect(result.isOk()).toBe(true);
-    });
-  });
-
-  describe('GET /api/confirm/{token}', () => {
-  });
-
-  describe('GET /api/unsubscribe/{token}', () => {
-  });
-
-  describe('GET /api/subscriptions', () => {
-  });
+    expect(controller).toBeTruthy();
+  })
 });

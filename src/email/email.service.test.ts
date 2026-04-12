@@ -1,28 +1,76 @@
-import { describe, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-describe("EmailService", () => {
+import type { AppError } from '@/utils/errors.js';
+import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 
-  it("sends email with correct template", async () => {
-    // arrange: mock SMTP client
+import type { Email } from './email.service.js';
+import { createEmailService } from './email.service.js';
 
-    // act: send email
+describe('email.service', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-    // assert: correct template + recipient used
-  })
+  it('sends confirmation emails successfully', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const service = createEmailService();
 
-  it("handles SMTP failure", async () => {
-    // arrange: SMTP throws error
+    await expectOkAsync(
+      service.sendEmail('user@example.com', {
+        type: 'confirmation',
+        data: {
+          repoName: 'owner/repo',
+          confirmHtmlUrl: 'http://localhost:3000/confirm/token',
+          confirmApiUrl: 'http://localhost:3000/api/confirm/token',
+        },
+      } as Email),
+    );
 
-    // act: send email
+    expect(logSpy).toHaveBeenCalledWith(
+      '[Email:confirmation] To: user@example.com, Repo: owner/repo',
+    );
+  });
 
-    // assert: error returned or wrapped in Result
-  })
+  it('sends release emails successfully', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const service = createEmailService();
 
-  it("sanitizes input before sending", async () => {
-    // arrange: unsafe input
+    await expectOkAsync(
+      service.sendEmail('user@example.com', {
+        type: 'release',
+        data: {
+          repoName: 'owner/repo',
+          tag: 'v2.0.0',
+          releaseUrl: 'https://github.com/owner/repo/releases/tag/v2.0.0',
+          unsubscribeHtmlUrl: 'http://localhost:3000/unsubscribe/token',
+          unsubscribeApiUrl: 'http://localhost:3000/api/unsubscribe/token',
+        },
+      } as Email),
+    );
 
-    // act: send email
+    expect(logSpy).toHaveBeenCalledWith('[Email:release] To: user@example.com, Repo: owner/repo');
+  });
 
-    // assert: sanitized payload sent
-  })
-})
+  it('wraps mock sender failures as Internal errors', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {
+      throw new Error('transport down');
+    });
+    const service = createEmailService();
+
+    const error = await expectErrAsync(
+      service.sendEmail('user@example.com', {
+        type: 'confirmation',
+        data: {
+          repoName: 'owner/repo',
+          confirmHtmlUrl: 'http://localhost:3000/confirm/token',
+          confirmApiUrl: 'http://localhost:3000/api/confirm/token',
+        },
+      } as Email),
+    );
+
+    expect(error).toEqual({
+      type: 'Internal',
+      message: 'Failed to send email: transport down',
+    } as AppError);
+  });
+});

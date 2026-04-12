@@ -1,4 +1,4 @@
-import { err, errAsync, ok, okAsync, Result, ResultAsync } from 'neverthrow';
+import { err, ok, Result, ResultAsync } from 'neverthrow';
 
 import type { GithubClient } from '@/github/github.client.js';
 import type { Logger } from '@/logger/logger.js';
@@ -66,55 +66,42 @@ export function createSubscriptionService({
     const { email, repo: repoFullName } = input;
     const { owner, name } = parseRepoFullName(repoFullName);
 
-    // 1. Get the repo from DB or fetch from GH
-    const repoResult = await ResultAsync.fromPromise(
-      repositoryRepo.findByFullName(repoFullName),
-      (): AppError => ({ type: 'Internal', message: 'DB error' }),
-    )
-      .andThen((foundRepo) =>
-        foundRepo
-          ? ok({ type: 'DB_REPO' as const, repo: foundRepo })
-          : err({ type: 'NotFound', message: 'Repo not found in DB' } as AppError),
-      )
-      .orElse(() =>
-        githubClient
-          .getRepo(owner, name)
-          .map((ghRepo) => ({ type: 'GH_REPO' as const, repo: ghRepo }))
-          .mapErr<AppError>(mapHttpErrorToAppError),
-      );
+    // 1. Verify the repository exists
+    const githubRepoResult = await githubClient.getRepo(owner, name);
 
-    if (repoResult.isErr()) {
-      return err(repoResult.error);
+    if (githubRepoResult.isErr()) {
+      return err(mapHttpErrorToAppError(githubRepoResult.error));
     }
 
-    // 2. Create/update the repo in DB
-    const updatedRepoResult = await repoResult
-      .asyncAndThen((res) => {
-        switch (res.type) {
-          case 'DB_REPO': {
-            if (res.repo.isActive) return okAsync(res.repo);
-            return ResultAsync.fromPromise(
-              repositoryRepo.update(res.repo.id, {
-                isActive: true,
-              }),
-              (): AppError => ({ type: 'Internal', message: 'DB Error: updating repo' }),
-            );
-          }
-          case 'GH_REPO': {
-            return ResultAsync.fromPromise(
-              repositoryRepo.create({
-                fullName: res.repo.full_name,
-                owner: res.repo.owner.login,
-                name: res.repo.name,
-                isActive: true,
-              }),
-              (): AppError => ({ type: 'Internal', message: 'DB Error: creating repo' }),
-            );
-          }
-          default:
-            res satisfies never;
-            return errAsync({ type: 'Internal', message: 'Unreachable code' } as AppError);
+    const githubRepo = githubRepoResult.value;
+
+    // 2. Sync the verified repo into the DB
+    const updatedRepoResult = await ResultAsync.fromPromise(
+      repositoryRepo.findByFullName(githubRepo.full_name),
+      (): AppError => ({ type: 'Internal', message: 'DB error' }),
+    )
+      .andThen((existingRepo) => {
+        if (existingRepo) {
+          return ResultAsync.fromPromise(
+            repositoryRepo.update(existingRepo.id, {
+              fullName: githubRepo.full_name,
+              owner: githubRepo.owner.login,
+              name: githubRepo.name,
+              isActive: true,
+            }),
+            (): AppError => ({ type: 'Internal', message: 'DB Error: updating repo' }),
+          );
         }
+
+        return ResultAsync.fromPromise(
+          repositoryRepo.create({
+            fullName: githubRepo.full_name,
+            owner: githubRepo.owner.login,
+            name: githubRepo.name,
+            isActive: true,
+          }),
+          (): AppError => ({ type: 'Internal', message: 'DB Error: creating repo' }),
+        );
       })
       .andThen((repo) =>
         repo
@@ -177,7 +164,7 @@ export function createSubscriptionService({
       return ResultAsync.fromPromise(
         confirmationEmailsQueue.enqueueConfirmationEmail({
           email,
-          repoName: repoFullName,
+          repoName: githubRepo.full_name,
           confirmHtmlUrl,
           confirmApiUrl,
         }),

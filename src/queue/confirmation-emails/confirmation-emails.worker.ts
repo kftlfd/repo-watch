@@ -68,7 +68,10 @@ export function createConfirmationEmailsWorker({ config, logger, emailService, r
   });
 
   worker.on('error', (error) => {
-    log.error({ error }, 'Worker error:');
+    log.error({ error }, 'Worker error, force-closing');
+    worker.close(true).catch((closeError: unknown) => {
+      log.error({ error: closeError }, 'Error when closing worker after error');
+    });
   });
 
   return worker;

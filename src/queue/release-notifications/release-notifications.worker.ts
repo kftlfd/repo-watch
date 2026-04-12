@@ -119,7 +119,10 @@ export function createReleaseNotificationsWorker({
   });
 
   emailWorker.on('error', (error) => {
-    log.error({ error }, 'Worker error');
+    log.error({ error }, 'Worker error, force-closing');
+    emailWorker.close(true).catch((closeError: unknown) => {
+      log.error({ error: closeError }, 'Error when closing worker after error');
+    });
   });
 
   return emailWorker;

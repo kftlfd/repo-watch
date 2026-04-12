@@ -3,7 +3,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 const EnvSchema = z.object({
-  NODE_ENV: z.enum(['dev', 'prod']).catch('dev'),
+  NODE_ENV: z.enum(['dev', 'test', 'prod']).catch('dev'),
   DATABASE_URL: z.url().min(1),
   REDIS_URL: z.url().min(1),
   GITHUB_TOKEN: z.string().min(1).optional().catch(undefined),

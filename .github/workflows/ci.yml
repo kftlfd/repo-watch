@@ -55,9 +55,9 @@ jobs:
         ports:
           - 5432:5432
         env:
-          - POSTGRES_USER=test
-          - POSTGRES_PASSWORD=test
-          - POSTGRES_DB=test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
 
     env:
       DATABASE_URL: postgres://test:test@localhost:5432/test

@@ -62,7 +62,7 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgres://test:test@localhost:5432/test
-      REDIS_URL: none
+      REDIS_URL: redis://localhost:6379
       SERVER_SECRET: ci-test
 
     steps:

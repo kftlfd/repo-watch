@@ -60,8 +60,10 @@ jobs:
           POSTGRES_DB: test
 
     env:
-      DATABASE_URL: postgres://test:test@localhost:5432/test
       NODE_ENV: test
+      DATABASE_URL: postgres://test:test@localhost:5432/test
+      REDIS_URL: none
+      SERVER_SECRET: ci-test
 
     steps:
       - name: Checkout code

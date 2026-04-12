@@ -19,6 +19,8 @@
     "test:unit:watch": "vitest watch --config vitest.unit.config.ts",
     "test:int": "vitest run --config vitest.int.config.ts",
     "test:int:watch": "vitest watch --config vitest.int.config.ts",
+    "test:int:db:up": "docker compose -f docker-compose.test.yml up -d",
+    "test:int:db:down": "docker compose -f docker-compose.test.yml down",
     "lint": "prettier -c . && tsc && eslint . --max-warnings 0",
     "fmt": "prettier -w ."
   },

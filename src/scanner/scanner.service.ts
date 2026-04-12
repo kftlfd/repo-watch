@@ -80,6 +80,12 @@ export function createProcessRepositoryFn({
 
     const latestTag = releaseResult.value;
 
+    if (lastSeenTag === null) {
+      log.info(`Saving initial realease for a new repo: ${fullName}@${latestTag}`);
+      await repositoryRepo.updateAfterScan(repoId, now, latestTag);
+      return;
+    }
+
     if (latestTag === lastSeenTag) {
       log.info(`No new releases for ${fullName}`);
       await repositoryRepo.updateAfterScan(repoId, now);

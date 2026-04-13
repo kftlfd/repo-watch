@@ -9,7 +9,7 @@
     "node": "^22"
   },
   "scripts": {
-    "dev": "tsx --watch src/main.ts",
+    "dev": "tsx --watch src/main.ts | npx pino-pretty -c",
     "dev:infra:up": "docker compose up -d postgres redis",
     "dev:infra:down": "docker compose down",
     "start": "tsx src/main.ts",

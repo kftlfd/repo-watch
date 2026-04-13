@@ -5,6 +5,11 @@ export type MigrationConfig = {
   retryDelayMs: number;
 };
 
+type ServerConfig = {
+  host: string;
+  port: number;
+};
+
 export type GithubClientConfig = {
   baseUrl: string;
   authToken?: string;
@@ -79,6 +84,7 @@ export type RepoSubJobConfig = {
 
 export type Config = {
   migrations: MigrationConfig;
+  server: ServerConfig;
   githubClient: GithubClientConfig;
   repositoryRepo: RepositoryRepoConfig;
   scanner: ScannerConfig;
@@ -96,6 +102,10 @@ export const config: Config = {
   migrations: {
     maxAttempts: 5,
     retryDelayMs: 2_000,
+  },
+  server: {
+    host: env.HOST ?? (env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0'),
+    port: env.PORT ?? 3000,
   },
   githubClient: {
     baseUrl: 'https://api.github.com',

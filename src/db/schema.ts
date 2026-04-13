@@ -1,10 +1,16 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTableCreator, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index, pgTable, uniqueIndex } from 'drizzle-orm/pg-core';
 
-const pgTable = pgTableCreator((name) => `repo-watch_${name}`);
+const withPrefix = (name: string) => `repo-watch_${name}`;
+
+export const tableNames = {
+  repositories: withPrefix('repositories'),
+  subscriptions: withPrefix('subscriptions'),
+  tokens: withPrefix('tokens'),
+} as const;
 
 export const repositories = pgTable(
-  'repositories',
+  tableNames.repositories,
   (pg) => ({
     id: pg.serial('id').primaryKey(),
     owner: pg.text('owner').notNull(),
@@ -23,7 +29,7 @@ export const repositories = pgTable(
 );
 
 export const subscriptions = pgTable(
-  'subscriptions',
+  tableNames.subscriptions,
   (pg) => ({
     id: pg.serial('id').primaryKey(),
     email: pg.text('email').notNull(),
@@ -44,7 +50,7 @@ export const subscriptions = pgTable(
 );
 
 export const tokens = pgTable(
-  'tokens',
+  tableNames.tokens,
   (pg) => ({
     id: pg.serial('id').primaryKey(),
     tokenHash: pg.text('token_hash').notNull().unique(),

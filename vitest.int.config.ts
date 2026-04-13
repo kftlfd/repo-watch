@@ -1,9 +1,6 @@
 import { defineConfig, mergeConfig } from 'vitest/config';
 
-import { ensureIntegrationTestEnv } from './src/test/integration/env.js';
 import baseConfig from './vitest.config.js';
-
-ensureIntegrationTestEnv();
 
 export default mergeConfig(
   baseConfig,

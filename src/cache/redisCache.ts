@@ -8,7 +8,7 @@ export function createRedisCache(redis: Redis): Cache {
       return redis.get(key);
     },
     async set(key, value, ttl) {
-      await redis.setex(key, value, ttl);
+      await redis.setex(key, ttl, value);
     },
   };
 }

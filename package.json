@@ -10,6 +10,8 @@
   },
   "scripts": {
     "dev": "tsx --watch src/main.ts",
+    "dev:infra:up": "docker compose up -d postgres redis",
+    "dev:infra:down": "docker compose down",
     "start": "tsx src/main.ts",
     "db:gen": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

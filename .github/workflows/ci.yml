@@ -53,7 +53,7 @@ jobs:
       postgres:
         image: postgres:16-alpine
         ports:
-          - 5432:5432
+          - 5433:5432
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -61,7 +61,7 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgres://test:test@localhost:5432/test
+      DATABASE_URL: postgres://test:test@localhost:5433/test
       REDIS_URL: redis://localhost:6379
       SERVER_SECRET: ci-test
 
@@ -78,12 +78,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Start Postgres test database
-        run: npm run test:int:db:up
-
       - name: Run integration tests
         run: npm run test:int
-
-      - name: Stop Postgres test database
-        if: always()
-        run: npm run test:int:db:down

@@ -13,8 +13,6 @@
     "start": "tsx src/main.ts",
     "db:gen": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test": "vitest run",
-    "test:watch": "vitest watch",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:unit:watch": "vitest watch --config vitest.unit.config.ts",
     "test:int": "vitest run --config vitest.int.config.ts",

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeEach } from 'vitest';
 
-async function clearDatabase() {
+async function initTestDB() {
   const { db } = await import('@/db/client.js');
 
   await db.execute(
@@ -15,16 +15,16 @@ async function clearDatabase() {
   );
 }
 
-async function closeIntegrationDb() {
+async function closeTestDB() {
   const { closeDB } = await import('@/db/client.js');
 
   await closeDB();
 }
 
 beforeEach(async () => {
-  await clearDatabase();
+  await initTestDB();
 });
 
 afterAll(async () => {
-  await closeIntegrationDb();
+  await closeTestDB();
 });

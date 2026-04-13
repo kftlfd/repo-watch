@@ -1,13 +1,11 @@
 export default async function globalSetup() {
-  const [{ createLogger }, { applyDBMigrations, closeDB }] = await Promise.all([
-    import('@/logger/logger.js'),
-    import('@/db/client.js'),
-  ]);
+  const { createLogger } = await import('@/logger/logger.js');
+  const { applyDBMigrations, closeDB } = await import('@/db/client.js');
 
   await applyDBMigrations(
     {
-      maxAttempts: 3,
-      retryDelayMs: 2_000,
+      maxAttempts: 10,
+      retryDelayMs: 1_000,
     },
     createLogger(),
   );

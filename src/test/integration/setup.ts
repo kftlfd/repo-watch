@@ -1,11 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeEach } from 'vitest';
 
-import { ensureIntegrationTestEnv } from './env.js';
-
 async function clearDatabase() {
-  ensureIntegrationTestEnv();
-
   const { db } = await import('@/db/client.js');
 
   await db.execute(
@@ -20,14 +16,10 @@ async function clearDatabase() {
 }
 
 async function closeIntegrationDb() {
-  ensureIntegrationTestEnv();
-
   const { closeDB } = await import('@/db/client.js');
 
   await closeDB();
 }
-
-ensureIntegrationTestEnv();
 
 beforeEach(async () => {
   await clearDatabase();

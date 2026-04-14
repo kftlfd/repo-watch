@@ -12,7 +12,7 @@ import { createRepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-su
 import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
 import { redis } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
-import { createScannerService } from '@/scanner/scanner.service.js';
+import { createScannerLoop } from '@/scanner/scanner.loop.js';
 import { createFastifyServer } from '@/server/server.js';
 import { createSubscriptionApi } from '@/subscription/subscription.api.js';
 import { createSubscriptionController } from '@/subscription/subscription.controller.js';
@@ -66,7 +66,7 @@ export function createApp(config: Config) {
     confirmationEmailsQueue,
   });
   const emailService = createEmailService();
-  const scannerService = createScannerService({
+  const scannerLoop = createScannerLoop({
     config: config.scanner,
     logger,
     repositoryRepo,
@@ -110,7 +110,7 @@ export function createApp(config: Config) {
   return {
     logger,
     app,
-    scannerService,
+    scannerLoop,
     createWorkers,
   };
 }

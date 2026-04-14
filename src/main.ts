@@ -2,12 +2,11 @@ import 'dotenv/config';
 
 import { createApp } from '@/app.js';
 import { config } from '@/config/config.js';
-import { env } from '@/config/env.js';
 import { applyDBMigrations, closeDB } from '@/db/client.js';
 import { closeRedis } from '@/redis/redis.js';
 
 function bootstrap() {
-  const { logger, app, scannerService, createWorkers } = createApp(config);
+  const { logger, app, scannerLoop, createWorkers } = createApp(config);
 
   let workers: ReturnType<typeof createWorkers> = [];
 
@@ -17,11 +16,11 @@ function bootstrap() {
     workers = createWorkers();
 
     return Promise.all([
-      scannerService.start(),
+      scannerLoop.start(),
 
       app.listen({
-        host: env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0',
-        port: 3000,
+        host: config.server.host,
+        port: config.server.port,
       }),
     ]);
   }
@@ -40,7 +39,7 @@ function bootstrap() {
 
     async function shutdown(signal: string) {
       console.log(`Shutting down (${signal})...`);
-      scannerService.stop();
+      await scannerLoop.stop();
       await Promise.all(workers.map((worker) => worker.close()));
       await app.close();
       await closeRedis();

@@ -169,17 +169,19 @@ export function createScannerLoop({
   });
 
   async function processRepos(repos: Repository[], signal?: AbortSignal) {
+    let count = 0;
     let fails = 0;
     for (const repo of repos) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) break;
       const res = await processRepository(repo, signal);
+      count++;
       if (res.isErr()) {
         log.error({ error: res.error }, 'Process repo error');
         fails++;
       }
       await sleep(config.pollDelayMs, signal);
     }
-    log.info({ batchSize: repos.length, fails }, 'Repos batch processed');
+    log.info({ batchSize: config.batchSize, processed: count, fails }, 'Repos batch processed');
   }
 
   const loop = createLoop({

@@ -64,7 +64,6 @@ jobs:
       DATABASE_URL: postgres://test:test@localhost:5433/test
       REDIS_URL: redis://localhost:6379
       SERVER_SECRET: ci-test
-      BASE_URL: http://localhost:3000
 
     steps:
       - name: Checkout code

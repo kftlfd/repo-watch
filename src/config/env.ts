@@ -7,7 +7,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.url().min(1),
   REDIS_URL: z.url().min(1),
   GITHUB_TOKEN: z.string().min(1).optional().catch(undefined),
-  BASE_URL: z.url().optional().default('http://localhost:3000'),
+  BASE_URL: z.url().optional().catch('http://localhost:3000'),
   EMAIL_FROM: z.email().optional().default('noreply@example.com'),
   SERVER_SECRET: z.string().min(1),
 });

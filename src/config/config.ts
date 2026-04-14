@@ -125,7 +125,7 @@ export const config: Config = {
     maxBackoffDelayMs: 30 * 60_000,
   },
   tokenService: {
-    baseUrl: env.BASE_URL,
+    baseUrl: env.BASE_URL ?? '',
     serverSecret: env.SERVER_SECRET,
     tokenExpiryHours: 24,
   },

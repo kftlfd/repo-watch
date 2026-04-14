@@ -13,7 +13,7 @@ import {
 import { expectErr, expectOk } from '@/test/utils/result.js';
 import { sleep } from '@/utils/sleep.js';
 
-import { createFetchWithRetryFn, createProcessRepositoryFn } from './scanner.service.js';
+import { createFetchWithRetryFn, createProcessRepositoryFn } from './scanner.loop.js';
 
 vi.mock('@/utils/sleep.js', () => ({
   sleep: vi.fn().mockResolvedValue(undefined),

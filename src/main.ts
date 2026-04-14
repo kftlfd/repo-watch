@@ -6,7 +6,7 @@ import { applyDBMigrations, closeDB } from '@/db/client.js';
 import { closeRedis } from '@/redis/redis.js';
 
 function bootstrap() {
-  const { logger, app, scannerService, createWorkers } = createApp(config);
+  const { logger, app, scannerLoop, createWorkers } = createApp(config);
 
   let workers: ReturnType<typeof createWorkers> = [];
 
@@ -16,7 +16,7 @@ function bootstrap() {
     workers = createWorkers();
 
     return Promise.all([
-      scannerService.start(),
+      scannerLoop.start(),
 
       app.listen({
         host: config.server.host,
@@ -39,7 +39,7 @@ function bootstrap() {
 
     async function shutdown(signal: string) {
       console.log(`Shutting down (${signal})...`);
-      scannerService.stop();
+      scannerLoop.stop();
       await Promise.all(workers.map((worker) => worker.close()));
       await app.close();
       await closeRedis();

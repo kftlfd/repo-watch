@@ -116,14 +116,14 @@ type Deps = {
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
 };
 
-export function createScannerService({
+export function createScannerLoop({
   config,
   repositoryRepo,
   githubClient,
   logger,
   repoSubscriptionsQueue,
 }: Deps): ScannerService {
-  const log = logger.child({ module: 'scanner.service' });
+  const log = logger.child({ module: 'scanner.loop' });
 
   const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient });
   const processRepository = createProcessRepositoryFn({

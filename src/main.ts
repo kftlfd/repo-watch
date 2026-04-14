@@ -39,7 +39,7 @@ function bootstrap() {
 
     async function shutdown(signal: string) {
       console.log(`Shutting down (${signal})...`);
-      scannerLoop.stop();
+      await scannerLoop.stop();
       await Promise.all(workers.map((worker) => worker.close()));
       await app.close();
       await closeRedis();

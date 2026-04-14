@@ -1,4 +1,4 @@
-import { err, Result } from 'neverthrow';
+import { err, errAsync, Result, ResultAsync } from 'neverthrow';
 
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
@@ -6,14 +6,24 @@ import type { Logger } from '@/logger/logger.js';
 import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import type { HttpError } from '@/utils/errors.js';
+import { createLoop } from '@/loop/loop.js';
 import { sleep } from '@/utils/sleep.js';
 
-export type ScannerService = {
-  start(): Promise<void>;
-  stop(): void;
-};
-
-type FetchWithRetryFn = (owner: string, name: string) => Promise<Result<string, HttpError>>;
+/**
+ * TODO:
+ *
+ * Add scanner health metrics for monitoring
+ * - lastSuccessfulScan timestamp
+ * - totalReposScanned counter
+ * - apiCallsPerScan average
+ * - reposWithNewReleases counter
+ * - retries in `fetchWithRetries`
+ *
+ * (?) Interrupt DB queries
+ * - Pass AbortSignal into `repositoryRepo.findBatchForScanning`
+ *
+ * (?) Separate "process repo & update DB" from "enqueue subs-notifications event"
+ */
 
 export function createFetchWithRetryFn({
   log,
@@ -23,11 +33,20 @@ export function createFetchWithRetryFn({
   log: Logger;
   config: ScannerConfig;
   githubClient: GithubClient;
-}): FetchWithRetryFn {
-  return async function fetchWithRetry(owner, name) {
+}) {
+  /**
+   * Keep retrying with exponential backoff on rate-limits until success or non-rate-limit error
+   */
+  return async function fetchWithRetry(
+    owner: string,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<Result<string, HttpError | 'ABORTED'>> {
     let delayMs = config.initialRetryDelay;
 
     while (true) {
+      if (signal?.aborted) return err('ABORTED');
+
       const result = await githubClient.getLatestRelease(owner, name);
 
       if (result.isOk()) {
@@ -45,11 +64,13 @@ export function createFetchWithRetryFn({
         delayMs *= 2;
       }
 
-      log.info(`[Scanner] TooManyRequests error, retrying in ${retryDelayMs.toString()}ms...`);
-      await sleep(retryDelayMs);
+      log.info({ retryDelayMs }, 'Rete limit detected, scheduled retry');
+      await sleep(retryDelayMs, signal);
     }
   };
 }
+
+type FetchWithRetryFn = ReturnType<typeof createFetchWithRetryFn>;
 
 export function createProcessRepositoryFn({
   log,
@@ -62,49 +83,63 @@ export function createProcessRepositoryFn({
   fetchWithRetry: FetchWithRetryFn;
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
 }) {
-  return async function processRepository(repo: Repository) {
+  function updateAfterScan(repoId: number, now: Date, latestTag?: string) {
+    return ResultAsync.fromPromise(
+      repositoryRepo.updateAfterScan(repoId, now, latestTag),
+      (error) => {
+        log.error({ error }, '[updateAfterScan] DB_ERROR');
+        return 'DB_ERROR' as const;
+      },
+    );
+  }
+
+  return function processRepository(repo: Repository, signal?: AbortSignal) {
     const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
     const now = new Date();
 
-    const releaseResult = await fetchWithRetry(owner, name);
+    return ResultAsync.fromPromise(
+      fetchWithRetry(owner, name, signal),
+      () => 'FETCH_FN_CRASHED' as const,
+    ).andThen((tagResult) => {
+      if (tagResult.isErr()) {
+        const error = tagResult.error;
 
-    if (releaseResult.isErr()) {
-      const error = releaseResult.error;
-      log.error(
-        { error, repoId, repoFullName: fullName },
-        `Failed to fetch release for ${fullName}`,
-      );
-      await repositoryRepo.updateAfterScan(repoId, now);
-      return;
-    }
+        if (error === 'ABORTED') return errAsync(error);
 
-    const latestTag = releaseResult.value;
+        log.error({ error, repoId, fullName }, 'Failed to fetch release');
+        return updateAfterScan(repoId, now);
+      }
 
-    if (lastSeenTag === null) {
-      log.info(`Saving initial realease for a new repo: ${fullName}@${latestTag}`);
-      await repositoryRepo.updateAfterScan(repoId, now, latestTag);
-      return;
-    }
+      const latestTag = tagResult.value;
 
-    if (latestTag === lastSeenTag) {
-      log.info(`No new releases for ${fullName}`);
-      await repositoryRepo.updateAfterScan(repoId, now);
-      return;
-    }
+      if (lastSeenTag === null) {
+        log.info(`Saving initial release for a new repo: ${fullName}@${latestTag}`);
+        return updateAfterScan(repoId, now, latestTag);
+      }
 
-    await repositoryRepo.updateAfterScan(repoId, now, latestTag);
+      if (latestTag === lastSeenTag) {
+        log.info(`No new releases for ${fullName}`);
+        return updateAfterScan(repoId, now);
+      }
 
-    await repoSubscriptionsQueue
-      .enqueueRepoSubscriptions({
-        repoId,
-        repoName: fullName,
-        latestTag,
-      })
-      .catch((error: unknown) => {
-        log.error({ error }, 'Enqueue error');
-      });
-
-    log.info(`New release: ${fullName}@${latestTag}, subscriptions notifier enqueued`);
+      return updateAfterScan(repoId, now, latestTag)
+        .andThen(() =>
+          ResultAsync.fromPromise(
+            repoSubscriptionsQueue.enqueueRepoSubscriptions({
+              repoId,
+              repoName: fullName,
+              latestTag,
+            }),
+            (error) => {
+              log.error({ error, fullName, latestTag }, 'Enqueue subscriptions notifier failed');
+              return 'ENQUEUE_ERROR' as const;
+            },
+          ),
+        )
+        .andTee(() => {
+          log.info({ fullName, latestTag }, 'subscriptions notifier enqueued');
+        });
+    });
   };
 }
 
@@ -122,7 +157,7 @@ export function createScannerLoop({
   githubClient,
   logger,
   repoSubscriptionsQueue,
-}: Deps): ScannerService {
+}: Deps) {
   const log = logger.child({ module: 'scanner.loop' });
 
   const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient });
@@ -133,52 +168,43 @@ export function createScannerLoop({
     repoSubscriptionsQueue,
   });
 
-  let running = true;
-  let consecutiveErrors = 0;
-
-  // TODO: Add scanner health metrics for monitoring
-  // - lastSuccessfulScan timestamp
-  // - totalReposScanned counter
-  // - apiCallsPerScan average
-  // - reposWithNewReleases counter
-
-  async function start() {
-    log.info(
-      `Scanner started (interval: ${config.scanIntervalMs.toString()}ms, batch: ${config.batchSize.toString()})`,
-    );
-
-    while (running) {
-      try {
-        const repos = await repositoryRepo.findBatchForScanning(config.batchSize);
-
-        for (const repo of repos) {
-          await processRepository(repo);
-          await sleep(config.pollDelayMs);
-        }
-
-        consecutiveErrors = 0;
-      } catch (error) {
-        log.error({ error }, 'Scanner error:');
-        consecutiveErrors++;
-
-        const backoffDelay = Math.min(
-          config.baseErrorDelayMs * Math.pow(2, consecutiveErrors - 1),
-          config.maxBackoffDelayMs,
-        );
-
-        log.info(
-          `Backing off for ${backoffDelay.toString()}ms after ${consecutiveErrors.toString()} consecutive errors`,
-        );
-        await sleep(backoffDelay);
+  async function processRepos(repos: Repository[], signal?: AbortSignal) {
+    let fails = 0;
+    for (const repo of repos) {
+      if (signal?.aborted) return;
+      const res = await processRepository(repo, signal);
+      if (res.isErr()) {
+        log.error({ error: res.error }, 'Process repo error');
+        fails++;
       }
-
-      await sleep(config.scanIntervalMs);
+      await sleep(config.pollDelayMs, signal);
     }
+    log.info({ batchSize: repos.length, fails }, 'Repos batch processed');
   }
 
-  function stop() {
-    running = false;
-  }
+  const loop = createLoop({
+    log,
 
-  return { start, stop };
+    run(signal) {
+      return ResultAsync.fromPromise(
+        repositoryRepo.findBatchForScanning(config.batchSize),
+        () => 'DB_ERROR' as const,
+      ).andThen((repos) =>
+        ResultAsync.fromPromise(processRepos(repos, signal), () => 'PROCESSING_ERROR' as const),
+      );
+    },
+
+    getNextDelayMs({ runResult }) {
+      if (runResult.isErr()) {
+        log.error({ error: runResult.error }, 'Batch failed');
+      }
+      return config.scanIntervalMs;
+    },
+
+    onStart() {
+      log.info({ interval: config.scanIntervalMs, batchSize: config.batchSize }, 'Scanner started');
+    },
+  });
+
+  return loop;
 }

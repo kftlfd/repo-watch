@@ -104,9 +104,3 @@ Monolith service with 3 main parts:
 - actual email delivery is intentionally not implemented yet (low priority).
 
 - API returns extra `5xx` errors (DB errors, rate limits, etc.) which are not specified in the Swagger contract.
-
-### TODO
-
-- add real email transport
-- wrap multi-step DB queries in transactions
-- db clean-up worker/loop to delete expired tokens

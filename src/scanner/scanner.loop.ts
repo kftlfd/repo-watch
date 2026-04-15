@@ -9,22 +9,6 @@ import type { HttpError } from '@/utils/errors.js';
 import { createLoop } from '@/loop/loop.js';
 import { sleep } from '@/utils/sleep.js';
 
-/**
- * TODO:
- *
- * Add scanner health metrics for monitoring
- * - lastSuccessfulScan timestamp
- * - totalReposScanned counter
- * - apiCallsPerScan average
- * - reposWithNewReleases counter
- * - retries in `fetchWithRetries`
- *
- * (?) Interrupt DB queries
- * - Pass AbortSignal into `repositoryRepo.findBatchForScanning`
- *
- * (?) Separate "process repo & update DB" from "enqueue subs-notifications event"
- */
-
 export function createFetchWithRetryFn({
   log,
   config,

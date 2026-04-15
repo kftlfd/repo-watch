@@ -5,6 +5,7 @@ node_modules
 !.env.example
 !.env.*.example
 
-dist
+coverage/
+dist/
 
 *.tsbuildinfo

@@ -6,5 +6,3 @@ export const SubscribeInputSchema = z.object({
 });
 
 export type SubscribeInput = z.infer<typeof SubscribeInputSchema>;
-
-export const EmailSchema = z.email();

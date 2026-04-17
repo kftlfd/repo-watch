@@ -1,12 +1,10 @@
-import type { FastifyReply } from 'fastify';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import z from 'zod';
 
-import type { AppError } from '@/utils/errors.js';
-import { mapErrorToHttp } from '@/utils/errors.js';
+import { OpenApiTag } from '@/utils/openapi.js';
 
 import type { SubscriptionService } from './subscription.service.js';
-import { SubscribeInputSchema } from './subscription.schema.js';
+import { ApiErrorSchema, SubscribeInputSchema } from './subscription.schema.js';
 
 type Deps = {
   subscriptionService: SubscriptionService;
@@ -14,37 +12,59 @@ type Deps = {
 
 export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPluginCallbackZod {
   return function subscriptionApiRoutes(fastify, _opts, done) {
-    function sendAppError(reply: FastifyReply, error: AppError) {
-      const statusCode = mapErrorToHttp(error);
-
-      const retryAfter =
-        error.type === 'RateLimited' && error.retryAfterSeconds !== null
-          ? error.retryAfterSeconds.toString()
-          : null;
-
-      if (retryAfter) {
-        reply.header('Retry-After', retryAfter);
-      }
-
-      return reply.code(statusCode).send(error);
-    }
-
     fastify.post(
       '/subscribe',
       {
         schema: {
+          tags: [OpenApiTag.API],
+          consumes: ['application/json', 'application/x-www-form-urlencoded'],
           body: SubscribeInputSchema,
+          response: {
+            200: z.object({ message: z.string() }),
+            400: ApiErrorSchema,
+            404: ApiErrorSchema,
+            409: ApiErrorSchema,
+            500: ApiErrorSchema,
+            502: ApiErrorSchema,
+            503: ApiErrorSchema,
+          },
         },
       },
       async (req, reply) => {
         const result = await subscriptionService.subscribe(req.body);
 
         return result.match(
-          () =>
-            reply.code(200).send({ message: 'Subscription successful. Confirmation email sent.' }),
+          () => {
+            return reply
+              .code(200)
+              .send({ message: 'Subscription successful. Confirmation email sent.' });
+          },
+
           (error) => {
             req.log.error({ error }, 'Subscription service error');
-            return sendAppError(reply, error);
+            switch (error.type) {
+              case 'Validation': {
+                return reply.code(400).send({ message: error.message });
+              }
+              case 'NotFound': {
+                return reply.code(404).send({ message: error.message });
+              }
+              case 'Conflict': {
+                return reply.code(409).send({ message: error.message });
+              }
+              case 'External': {
+                return reply.code(502).send({ message: error.message });
+              }
+              case 'RateLimited': {
+                const retryAfter = error.retryAfterSeconds?.toString();
+                if (retryAfter) {
+                  reply.header('Retry-After', retryAfter);
+                }
+                return reply.code(503).send({ message: error.message });
+              }
+              default:
+                return reply.code(500).send({ message: error.message });
+            }
           },
         );
       },
@@ -54,9 +74,19 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
       '/confirm/:token',
       {
         schema: {
+          tags: [OpenApiTag.API],
           params: z.object({
             token: z.string().min(10),
           }),
+          response: {
+            200: z.object({ message: z.string() }),
+            400: ApiErrorSchema,
+            404: ApiErrorSchema,
+            409: ApiErrorSchema,
+            500: ApiErrorSchema,
+            502: ApiErrorSchema,
+            503: ApiErrorSchema,
+          },
         },
       },
       async (req, reply) => {
@@ -65,10 +95,35 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
         const result = await subscriptionService.confirm(token);
 
         return result.match(
-          () => reply.code(200).send({ message: 'Subscription confirmed successfully.' }),
+          () => {
+            return reply.code(200).send({ message: 'Subscription confirmed successfully.' });
+          },
+
           (error) => {
             req.log.error({ error }, 'Confirm service error');
-            return sendAppError(reply, error);
+            switch (error.type) {
+              case 'Validation': {
+                return reply.code(400).send({ message: error.message });
+              }
+              case 'NotFound': {
+                return reply.code(404).send({ message: error.message });
+              }
+              case 'Conflict': {
+                return reply.code(409).send({ message: error.message });
+              }
+              case 'External': {
+                return reply.code(502).send({ message: error.message });
+              }
+              case 'RateLimited': {
+                const retryAfter = error.retryAfterSeconds?.toString();
+                if (retryAfter) {
+                  reply.header('Retry-After', retryAfter);
+                }
+                return reply.code(503).send({ message: error.message });
+              }
+              default:
+                return reply.code(500).send({ message: error.message });
+            }
           },
         );
       },
@@ -78,9 +133,19 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
       '/unsubscribe/:token',
       {
         schema: {
+          tags: [OpenApiTag.API],
           params: z.object({
             token: z.string().min(10),
           }),
+          response: {
+            200: z.object({ message: z.string() }),
+            400: ApiErrorSchema,
+            404: ApiErrorSchema,
+            409: ApiErrorSchema,
+            500: ApiErrorSchema,
+            502: ApiErrorSchema,
+            503: ApiErrorSchema,
+          },
         },
       },
       async (req, reply) => {
@@ -89,10 +154,35 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
         const result = await subscriptionService.unsubscribe(token);
 
         return result.match(
-          () => reply.code(200).send({ message: 'Unsubscribed successfully.' }),
+          () => {
+            return reply.code(200).send({ message: 'Unsubscribed successfully.' });
+          },
+
           (error) => {
             req.log.error({ error }, 'Unsubscribe service error');
-            return sendAppError(reply, error);
+            switch (error.type) {
+              case 'Validation': {
+                return reply.code(400).send({ message: error.message });
+              }
+              case 'NotFound': {
+                return reply.code(404).send({ message: error.message });
+              }
+              case 'Conflict': {
+                return reply.code(409).send({ message: error.message });
+              }
+              case 'External': {
+                return reply.code(502).send({ message: error.message });
+              }
+              case 'RateLimited': {
+                const retryAfter = error.retryAfterSeconds?.toString();
+                if (retryAfter) {
+                  reply.header('Retry-After', retryAfter);
+                }
+                return reply.code(503).send({ message: error.message });
+              }
+              default:
+                return reply.code(500).send({ message: error.message });
+            }
           },
         );
       },
@@ -102,9 +192,26 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
       '/subscriptions',
       {
         schema: {
+          tags: [OpenApiTag.API],
           querystring: z.object({
-            email: z.email(),
+            email: z.email().meta({ example: 'user@mail.com' }),
           }),
+          response: {
+            200: z.array(
+              z.object({
+                email: z.string(),
+                repo: z.string(),
+                confirmed: z.boolean(),
+                last_seen_tag: z.string(),
+              }),
+            ),
+            400: ApiErrorSchema,
+            404: ApiErrorSchema,
+            409: ApiErrorSchema,
+            500: ApiErrorSchema,
+            502: ApiErrorSchema,
+            503: ApiErrorSchema,
+          },
         },
       },
       async (req, reply) => {
@@ -128,11 +235,35 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
               confirmed: sub.confirmed,
               last_seen_tag: sub.last_seen_tag ?? '',
             }));
+
             return reply.code(200).send(response);
           },
+
           (error) => {
             req.log.error({ error }, 'List subscriptions service error');
-            return sendAppError(reply, error);
+            switch (error.type) {
+              case 'Validation': {
+                return reply.code(400).send({ message: error.message });
+              }
+              case 'NotFound': {
+                return reply.code(404).send({ message: error.message });
+              }
+              case 'Conflict': {
+                return reply.code(409).send({ message: error.message });
+              }
+              case 'External': {
+                return reply.code(502).send({ message: error.message });
+              }
+              case 'RateLimited': {
+                const retryAfter = error.retryAfterSeconds?.toString();
+                if (retryAfter) {
+                  reply.header('Retry-After', retryAfter);
+                }
+                return reply.code(503).send({ message: error.message });
+              }
+              default:
+                return reply.code(500).send({ message: error.message });
+            }
           },
         );
       },

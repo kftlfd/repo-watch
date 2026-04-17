@@ -2,6 +2,7 @@ import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import z from 'zod';
 
 import { mapErrorToHttp } from '@/utils/errors.js';
+import { OpenApiTag } from '@/utils/openapi.js';
 
 import type { SubscriptionService } from './subscription.service.js';
 import { SubscribeInputSchema } from './subscription.schema.js';
@@ -21,14 +22,23 @@ type Deps = {
 
 export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPluginCallbackZod {
   return function subscriptionWebRoutes(fastify, _opts, done) {
-    fastify.get('/', async (_req, reply) => {
-      return reply.type('text/html').send(renderHomeForm());
-    });
+    fastify.get(
+      '/',
+      {
+        schema: {
+          tags: [OpenApiTag.Web],
+        },
+      },
+      async (_req, reply) => {
+        return reply.type('text/html').send(renderHomeForm());
+      },
+    );
 
     fastify.post(
       '/subscribe',
       {
         schema: {
+          tags: [OpenApiTag.Web],
           body: SubscribeInputSchema,
         },
       },
@@ -50,6 +60,7 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
       '/confirm/:token',
       {
         schema: {
+          tags: [OpenApiTag.Web],
           params: z.object({
             token: z.string().min(10),
           }),
@@ -74,6 +85,7 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
       '/unsubscribe/:token',
       {
         schema: {
+          tags: [OpenApiTag.Web],
           params: z.object({
             token: z.string().min(10),
           }),

@@ -1,3 +1,4 @@
+import { okAsync } from 'neverthrow';
 import { vi } from 'vitest';
 
 import type { Cache } from '@/cache/cache.js';
@@ -58,12 +59,12 @@ export function createMockCache(overrides?: Partial<Cache>): Cache {
 
 export function createMockRepositoryRepo(overrides?: Partial<RepositoryRepo>): RepositoryRepo {
   return {
-    create: vi.fn(),
-    update: vi.fn(),
-    findBatchForScanning: vi.fn(),
-    findByFullName: vi.fn(),
-    getLatestTag: vi.fn(),
-    updateAfterScan: vi.fn(),
+    create: vi.fn().mockReturnValue(okAsync()),
+    update: vi.fn().mockReturnValue(okAsync()),
+    findBatchForScanning: vi.fn().mockReturnValue(okAsync()),
+    findByFullName: vi.fn().mockReturnValue(okAsync()),
+    getLatestTag: vi.fn().mockReturnValue(okAsync()),
+    updateAfterScan: vi.fn().mockReturnValue(okAsync()),
     ...overrides,
   };
 }

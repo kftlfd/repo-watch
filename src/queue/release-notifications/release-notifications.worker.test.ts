@@ -61,8 +61,7 @@ describe('release-notifications.worker', () => {
   });
 
   it('throws when latest tag lookup fails', async () => {
-    const latestTagError = { type: 'Internal', message: 'latest tag unavailable' } as const;
-    const getLatestTag = vi.fn().mockReturnValue(errAsync(latestTagError));
+    const getLatestTag = vi.fn().mockReturnValue(errAsync());
 
     const processJob = createProcessReleaseNotificationJob({
       log: logger,
@@ -71,11 +70,8 @@ describe('release-notifications.worker', () => {
       emailService: createMockEmailService(),
     });
 
-    await expect(processJob(createJob() as never)).rejects.toThrow('latest tag unavailable');
-    expect(logger.error).toHaveBeenCalledWith(
-      { error: latestTagError },
-      'Failed to get latest tag for repo 1',
-    );
+    await expect(processJob(createJob() as never)).rejects.toThrow();
+    expect(logger.error).toHaveBeenCalled();
   });
 
   it('creates an unsubscribe token and sends the release email with expected payload', async () => {

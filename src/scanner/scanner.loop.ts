@@ -172,12 +172,11 @@ export function createScannerLoop({
     log,
 
     run(signal) {
-      return ResultAsync.fromPromise(
-        repositoryRepo.findBatchForScanning(config.batchSize),
-        () => 'DB_ERROR' as const,
-      ).andThen((repos) =>
-        ResultAsync.fromPromise(processRepos(repos, signal), () => 'PROCESSING_ERROR' as const),
-      );
+      return repositoryRepo
+        .findBatchForScanning(config.batchSize)
+        .andThen((repos) =>
+          ResultAsync.fromPromise(processRepos(repos, signal), () => 'PROCESSING_ERROR' as const),
+        );
     },
 
     getNextDelayMs({ runResult }) {

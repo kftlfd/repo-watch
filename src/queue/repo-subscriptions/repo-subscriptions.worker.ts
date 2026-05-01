@@ -36,7 +36,7 @@ export function createProcessRepoSubscriptionJob({
     if (latestTagResult.isErr()) {
       const error = latestTagResult.error;
       log.error({ error }, `Failed to get latest tag for repo ${String(repoId)}`);
-      throw new Error(error.message);
+      throw new Error(error.type);
     }
 
     if (latestTagResult.value != latestTag) {
@@ -57,8 +57,8 @@ export function createProcessRepoSubscriptionJob({
       if (subscriptionsBatch.length < 1) {
         if (cursor === -1) {
           log.info(`no subscribers for ${repoName}, marking repo as inactive`);
-          await repositoryRepo.update(repoId, { isActive: false }).catch((error: unknown) => {
-            log.error({ error }, 'DB error');
+          await repositoryRepo.update(repoId, { isActive: false }).orTee((error) => {
+            log.error({ error }, 'Update error');
           });
         }
         break;

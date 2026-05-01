@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { seedRepository, seedToken } from '@/test/integration/seeds.js';
+import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 
 import { createTokenRepo } from './token.repo.js';
 
@@ -9,13 +10,15 @@ describe('token.repo (integration)', () => {
     const repo = createTokenRepo();
     const repository = await seedRepository();
 
-    const created = await repo.create({
-      tokenHash: 'hash-1',
-      email: 'user@example.com',
-      repositoryId: repository.id,
-      type: 'confirm',
-      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
-    });
+    const created = await expectOkAsync(
+      repo.create({
+        tokenHash: 'hash-1',
+        email: 'user@example.com',
+        repositoryId: repository.id,
+        type: 'confirm',
+        expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      }),
+    );
 
     expect(created.id).toBeGreaterThan(0);
     expect(created.tokenHash).toBe('hash-1');
@@ -32,10 +35,10 @@ describe('token.repo (integration)', () => {
       expiresAt: new Date('2099-01-01T00:00:00.000Z'),
     });
 
-    const found = await repo.findValidByHashAndType('hash-2', 'unsubscribe');
+    const found = await expectOkAsync(repo.getValidByHashAndType('hash-2', 'unsubscribe'));
 
     expect(found).not.toBeNull();
-    expect(found?.id).toBe(token.id);
+    expect(found.id).toBe(token.id);
   });
 
   it('does not return expired or mismatched tokens', async () => {
@@ -54,11 +57,13 @@ describe('token.repo (integration)', () => {
       expiresAt: new Date('2099-01-01T00:00:00.000Z'),
     });
 
-    const expired = await repo.findValidByHashAndType('expired-hash', 'confirm');
-    const wrongType = await repo.findValidByHashAndType('confirm-hash', 'unsubscribe');
+    const expired = await expectErrAsync(repo.getValidByHashAndType('expired-hash', 'confirm'));
+    const wrongType = await expectErrAsync(
+      repo.getValidByHashAndType('confirm-hash', 'unsubscribe'),
+    );
 
-    expect(expired).toBeNull();
-    expect(wrongType).toBeNull();
+    expect(expired.type === 'DBNotFound');
+    expect(wrongType.type === 'DBNotFound');
   });
 
   it('deletes tokens by id', async () => {
@@ -72,8 +77,8 @@ describe('token.repo (integration)', () => {
     });
 
     await repo.deleteById(token.id);
-    const found = await repo.findValidByHashAndType('delete-me', 'confirm');
+    const res = await expectErrAsync(repo.getValidByHashAndType('delete-me', 'confirm'));
 
-    expect(found).toBeNull();
+    expect(res.type === 'DBNotFound');
   });
 });

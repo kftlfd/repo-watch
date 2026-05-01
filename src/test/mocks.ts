@@ -95,9 +95,9 @@ export function createMockTokenService(overrides?: Partial<TokenService>): Token
 
 export function createMockTokenRepo(overrides?: Partial<TokenRepo>): TokenRepo {
   return {
-    create: vi.fn(),
-    findValidByHashAndType: vi.fn(),
-    deleteById: vi.fn(),
+    create: vi.fn().mockReturnValue(okAsync()),
+    getValidByHashAndType: vi.fn().mockReturnValue(okAsync()),
+    deleteById: vi.fn().mockReturnValue(okAsync()),
     ...overrides,
   };
 }

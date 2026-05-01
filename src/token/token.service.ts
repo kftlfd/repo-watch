@@ -1,10 +1,9 @@
 import { createHmac, randomBytes } from 'crypto';
-import { err, ok, ResultAsync } from 'neverthrow';
+import { ResultAsync } from 'neverthrow';
 
 import type { TokenServiceConfig } from '@/config/config.js';
 import type { Token, TokenRepo } from '@/token/token.repo.js';
 import type { AppError } from '@/utils/errors.js';
-import { toAppError } from '@/utils/errors.js';
 
 export type TokenType = 'confirm' | 'unsubscribe';
 
@@ -61,14 +60,16 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
   function validateToken(token: string, type: TokenType): ResultAsync<Token, AppError> {
     const tokenHash = hashToken(token);
 
-    return ResultAsync.fromPromise(
-      tokenRepo.findValidByHashAndType(tokenHash, type),
-      toAppError,
-    ).andThen((found) => {
-      if (!found) {
-        return err({ type: 'NotFound', message: 'Invalid or expired token' } as AppError);
+    return tokenRepo.getValidByHashAndType(tokenHash, type).mapErr((e): AppError => {
+      switch (e.type) {
+        case 'DBError':
+          return { type: 'Internal', message: 'DB error' };
+        case 'DBNotFound':
+          return { type: 'NotFound', message: 'Invalid or expired token' };
+        default:
+          e satisfies never;
+          throw new Error('unhandled Err Result');
       }
-      return ok(found);
     });
   }
 

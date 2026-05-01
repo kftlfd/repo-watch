@@ -1,3 +1,18 @@
+type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};
+
+export function defineError<TType extends string, TArgs extends unknown[], TResult extends object>(
+  type: TType,
+  build?: (...args: TArgs) => TResult,
+) {
+  return (...args: TArgs) =>
+    ({
+      type,
+      ...(build ? build(...args) : {}),
+    }) as Prettify<{ type: TType } & TResult>;
+}
+
 export type AppError =
   | { type: 'Validation'; message: string }
   | { type: 'NotFound'; message: string }

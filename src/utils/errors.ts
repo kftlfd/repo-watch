@@ -1,7 +1,3 @@
-type Prettify<T> = {
-  [K in keyof T]: T[K];
-} & {};
-
 export function defineError<TType extends string, TArgs extends unknown[], TResult extends object>(
   type: TType,
   build?: (...args: TArgs) => TResult,
@@ -10,7 +6,7 @@ export function defineError<TType extends string, TArgs extends unknown[], TResu
     ({
       type,
       ...(build ? build(...args) : {}),
-    }) as Prettify<{ type: TType } & TResult>;
+    }) as Pretty<{ type: TType } & TResult>;
 }
 
 export type AppError =

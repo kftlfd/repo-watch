@@ -3,30 +3,20 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { Cache } from '@/cache/cache.js';
 import type { RepositoryRepoConfig } from '@/config/config.js';
-import type { DBError, DBNotFoundError } from '@/db/errors.js';
 import type { Logger } from '@/logger/logger.js';
+import type { Branded } from '@/utils/brand.js';
 import { db } from '@/db/client.js';
 import { dbErrors } from '@/db/errors.js';
 import { repositories } from '@/db/schema.js';
 
-export type Repository = typeof repositories.$inferSelect;
+type RepositoryRow = typeof repositories.$inferSelect;
+export type Repository = Branded<RepositoryRow, 'Repo'>;
+const toRepository = (v: RepositoryRow) => v as Repository;
+const toRepositoryArr = (v: RepositoryRow[]) => v as Repository[];
+
 export type NewRepository = typeof repositories.$inferInsert;
 
-export type RepositoryRepo = {
-  create(data: NewRepository): ResultAsync<Repository, DBError>;
-  update(
-    id: number,
-    data: Partial<NewRepository>,
-  ): ResultAsync<Repository, DBError | DBNotFoundError>;
-  findByFullName(fullName: string): ResultAsync<Repository, DBError | DBNotFoundError>;
-  getLatestTag(repoId: number): ResultAsync<string, DBError | DBNotFoundError>;
-  findBatchForScanning(limit: number): ResultAsync<Repository[], DBError>;
-  updateAfterScan(
-    repoId: number,
-    lastCheckedAt: Date,
-    lastSeenTag?: string,
-  ): ResultAsync<void, DBError | DBNotFoundError>;
-};
+export type RepositoryRepo = ReturnType<typeof createRepositoryRepo>;
 
 type Deps = {
   config: RepositoryRepoConfig;
@@ -34,7 +24,7 @@ type Deps = {
   logger: Logger;
 };
 
-export function createRepositoryRepo({ config, cache, logger }: Deps): RepositoryRepo {
+export function createRepositoryRepo({ config, cache, logger }: Deps) {
   const log = logger.child({ module: 'repository.repo' });
   const ENTITY = 'Repo';
 
@@ -42,7 +32,7 @@ export function createRepositoryRepo({ config, cache, logger }: Deps): Repositor
     return ResultAsync.fromPromise(db.insert(repositories).values(data).returning(), (e) =>
       dbErrors.DBError(e),
     ).andThen(([row]) =>
-      row ? ok(row) : err(dbErrors.DBError(new Error(`${ENTITY} not created`))),
+      row ? ok(toRepository(row)) : err(dbErrors.DBError(new Error(`${ENTITY} not created`))),
     );
   }
 
@@ -54,17 +44,19 @@ export function createRepositoryRepo({ config, cache, logger }: Deps): Repositor
         .where(eq(repositories.id, id))
         .returning(),
       (e) => dbErrors.DBError(e),
-    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { id }))));
+    ).andThen(([row]) => (row ? ok(toRepository(row)) : err(dbErrors.DBNotFound(ENTITY, { id }))));
   }
 
   function findByFullName(fullName: string) {
     return ResultAsync.fromPromise(
       db.select().from(repositories).where(eq(repositories.fullName, fullName)).limit(1),
       (e) => dbErrors.DBError(e),
-    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { fullName }))));
+    ).andThen(([row]) =>
+      row ? ok(toRepository(row)) : err(dbErrors.DBNotFound(ENTITY, { fullName })),
+    );
   }
 
-  function getCacheKey(repoId: number): string {
+  function getCacheKey(repoId: number) {
     return `repo:${repoId.toString()}:latest_tag`;
   }
 
@@ -86,12 +78,19 @@ export function createRepositoryRepo({ config, cache, logger }: Deps): Repositor
     return ResultAsync.fromPromise(
       db.select().from(repositories).where(eq(repositories.id, id)).limit(1),
       (e) => dbErrors.DBError(e),
-    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { id }))));
+    ).andThen(([row]) => (row ? ok(toRepository(row)) : err(dbErrors.DBNotFound(ENTITY, { id }))));
   }
 
   function getDBLatestTag(repoId: number) {
     return findById(repoId).andThen(({ lastSeenTag }) =>
       lastSeenTag ? ok(lastSeenTag) : err(dbErrors.DBNotFound(ENTITY, { id: repoId })),
+    );
+  }
+
+  function getLatestTag(repoId: number) {
+    const cacheKey = getCacheKey(repoId);
+    return getCacheLatestTag(cacheKey).orElse(() =>
+      getDBLatestTag(repoId).andTee((tag) => setCacheLatestTag(cacheKey, tag)),
     );
   }
 
@@ -104,10 +103,10 @@ export function createRepositoryRepo({ config, cache, logger }: Deps): Repositor
         .orderBy(sql`${repositories.lastCheckedAt} asc NULLS FIRST`)
         .limit(limit),
       (e) => dbErrors.DBError(e),
-    );
+    ).map(toRepositoryArr);
   }
 
-  function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
+  function updateDBAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
     return ResultAsync.fromPromise(
       db
         .update(repositories)
@@ -118,29 +117,23 @@ export function createRepositoryRepo({ config, cache, logger }: Deps): Repositor
         .where(eq(repositories.id, repoId))
         .returning(),
       (e) => dbErrors.DBError(e),
-    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { id: repoId }))));
+    ).andThen(([row]) =>
+      row ? ok(toRepository(row)) : err(dbErrors.DBNotFound(ENTITY, { id: repoId })),
+    );
+  }
+
+  function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
+    return updateDBAfterScan(repoId, lastCheckedAt, lastSeenTag).andThen((repo) =>
+      repo.lastSeenTag ? setCacheLatestTag(getCacheKey(repoId), repo.lastSeenTag) : ok(),
+    );
   }
 
   return {
     create,
-
     update,
-
     findByFullName,
-
-    getLatestTag(repoId) {
-      const cacheKey = getCacheKey(repoId);
-      return getCacheLatestTag(cacheKey).orElse(() =>
-        getDBLatestTag(repoId).andTee((tag) => setCacheLatestTag(cacheKey, tag)),
-      );
-    },
-
+    getLatestTag,
     findBatchForScanning,
-
-    updateAfterScan(repoId, lastCheckedAt, lastSeenTag) {
-      return updateAfterScan(repoId, lastCheckedAt, lastSeenTag).andThen((repo) =>
-        repo.lastSeenTag ? setCacheLatestTag(getCacheKey(repoId), repo.lastSeenTag) : ok(),
-      );
-    },
+    updateAfterScan,
   };
 }

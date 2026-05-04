@@ -5,8 +5,8 @@ import type { Token } from '@/token/token.repo.js';
 
 export function createGithubRepo(overrides?: Partial<Repo>): Repo {
   return {
-    full_name: 'owner/repo',
-    owner: { login: 'owner' },
+    fullName: 'owner/repo',
+    owner: 'owner',
     name: 'repo',
     ...overrides,
   };

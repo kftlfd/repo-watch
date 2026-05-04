@@ -64,7 +64,7 @@ describe('github.cached', () => {
   });
 
   it('falls back to the base client when cached repo data is invalid', async () => {
-    const repo = createGithubRepo({ full_name: 'owner/repo-2' });
+    const repo = createGithubRepo({ fullName: 'owner/repo-2' });
     const get = vi.fn().mockResolvedValue('{bad json');
     const baseGetRepo = vi.fn().mockReturnValue(okAsync(repo));
 

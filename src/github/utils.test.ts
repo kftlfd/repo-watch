@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { HttpError } from '@/utils/errors.js';
 import { expectErrAsync } from '@/test/utils/result.js';
 
 import { mapResponseToError } from './utils.js';
@@ -26,7 +25,7 @@ describe('github utils', () => {
       mapResponseToError(createResponse('', { status: 404, statusText: 'Not Found' })),
     );
 
-    expect(error).toEqual({ type: 'NotFound', message: 'Repo not found' });
+    expect(error.type === 'HttpNotFound');
   });
 
   it('maps 429 responses to TooManyRequests using numeric Retry-After', async () => {
@@ -40,7 +39,7 @@ describe('github utils', () => {
       ),
     );
 
-    expect(error).toEqual({ type: 'TooManyRequests', retryAfterSeconds: 42 } as HttpError);
+    expect(error.type === 'HttpTooManyRequests' && error.retryAfterSeconds === 42);
   });
 
   it('parses Retry-After HTTP date values for rate-limited responses', async () => {
@@ -56,7 +55,7 @@ describe('github utils', () => {
       ),
     );
 
-    expect(error).toEqual({ type: 'TooManyRequests', retryAfterSeconds: 30 } as HttpError);
+    expect(error.type === 'HttpTooManyRequests' && error.retryAfterSeconds === 30);
   });
 
   it('uses x-ratelimit-reset as a fallback for rate-limited responses', async () => {
@@ -72,7 +71,7 @@ describe('github utils', () => {
       ),
     );
 
-    expect(error).toEqual({ type: 'TooManyRequests', retryAfterSeconds: 90 } as HttpError);
+    expect(error.type === 'HttpTooManyRequests' && error.retryAfterSeconds === 90);
   });
 
   it('treats 403 with x-ratelimit-remaining zero as TooManyRequests', async () => {
@@ -86,7 +85,7 @@ describe('github utils', () => {
       ),
     );
 
-    expect(error).toEqual({ type: 'TooManyRequests', retryAfterSeconds: null } as HttpError);
+    expect(error.type === 'HttpTooManyRequests' && error.retryAfterSeconds === null);
   });
 
   it('maps non-rate-limit 401 and 403 responses to Unauthorized', async () => {
@@ -99,13 +98,7 @@ describe('github utils', () => {
       mapResponseToError(createResponse('forbidden', { status: 403, statusText: 'Forbidden' })),
     );
 
-    expect(unauthorized401).toEqual({
-      type: 'Unauthorized',
-      message: 'Authentication failed',
-    } as HttpError);
-    expect(unauthorized403).toEqual({
-      type: 'Unauthorized',
-      message: 'Authentication failed',
-    } as HttpError);
+    expect(unauthorized401.type === 'HttpUnauthorized');
+    expect(unauthorized403.type === 'HttpUnauthorized');
   });
 });

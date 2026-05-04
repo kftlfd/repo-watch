@@ -2,19 +2,17 @@ import { err, ok, ResultAsync } from 'neverthrow';
 import { z, ZodType } from 'zod';
 
 import type { GithubClientConfig } from '@/config/config.js';
-import type { HttpError } from '@/utils/errors.js';
+import type { HttpBadResponseError, HttpNetworkError } from '@/utils/errors.js';
+import { httpErrors } from '@/utils/errors.js';
 
-import type { Repo } from './github.schema.js';
-import { ReleaseSchema, RepoSchema, TagSchema } from './github.schema.js';
+import type { HttpRequestError } from './utils.js';
+import { ReleaseSchema, RepoResponseSchema, TagSchema, toRepo } from './github.schema.js';
 import { mapResponseToError } from './utils.js';
 
-export type GithubClient = {
-  getRepo(owner: string, repo: string): ResultAsync<Repo, HttpError>;
-  getLatestRelease(owner: string, repo: string): ResultAsync<string, HttpError>;
-};
+export type GithubClient = ReturnType<typeof createGithubClient>;
 
-export function createGithubClient(config: GithubClientConfig): GithubClient {
-  function getHeaders(): Record<string, string> {
+export function createGithubClient(config: GithubClientConfig) {
+  function getHeaders() {
     const headers: Record<string, string> = {
       Accept: 'application/json',
     };
@@ -27,33 +25,30 @@ export function createGithubClient(config: GithubClientConfig): GithubClient {
   function httpGet<TSchema extends ZodType>(
     url: string,
     bodySchema: TSchema,
-  ): ResultAsync<z.infer<TSchema>, HttpError> {
+  ): ResultAsync<z.infer<TSchema>, HttpNetworkError | HttpRequestError | HttpBadResponseError> {
     const response = ResultAsync.fromPromise(
       fetch(url, { headers: getHeaders(), signal: AbortSignal.timeout(config.timeoutMs) }),
-      (): HttpError => ({ type: 'NetworkError', message: 'Failed to fetch' }),
+      (e) => httpErrors.NetworkError(e),
     );
 
     const checked = response.andThen((resp) => (resp.ok ? ok(resp) : mapResponseToError(resp)));
 
     const jsonData = checked.andThen((resp) =>
-      ResultAsync.fromPromise(
-        resp.json(),
-        (): HttpError => ({ type: 'BadResponse', message: 'Failed to parse json' }),
-      ),
+      ResultAsync.fromPromise(resp.json(), () => httpErrors.BadResponse('Failed to parse json')),
     );
 
     const parsedBody = jsonData.andThen((resp) => {
-      const result = bodySchema.safeParse(resp);
-      return result.success
-        ? ok(result.data)
-        : err({ type: 'BadResponse', message: 'Failed to validate body' } as HttpError);
+      const parsed = bodySchema.safeParse(resp);
+      return parsed.success
+        ? ok(parsed.data)
+        : err(httpErrors.BadResponse('Failed to validate body'));
     });
 
     return parsedBody;
   }
 
   function getRepo(owner: string, repo: string) {
-    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}`, RepoSchema);
+    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}`, RepoResponseSchema).map(toRepo);
   }
 
   function getLatestReleaseTag(owner: string, repo: string) {
@@ -68,14 +63,14 @@ export function createGithubClient(config: GithubClientConfig): GithubClient {
         const tagValue = data[0]?.name;
         return tagValue
           ? ok(tagValue)
-          : err({ type: 'NotFound', message: `No tags found for ${owner}/${repo}` } as HttpError);
+          : err(httpErrors.NotFound(`No tags found for ${owner}/${repo}`));
       },
     );
   }
 
   function getLatestRelease(owner: string, repo: string) {
     return getLatestReleaseTag(owner, repo).orElse((error) =>
-      error.type === 'NotFound' ? getLatestTag(owner, repo) : err(error),
+      error.type === 'HttpNotFound' ? getLatestTag(owner, repo) : err(error),
     );
   }
 

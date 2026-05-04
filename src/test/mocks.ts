@@ -36,8 +36,8 @@ export function createMockLogger(): MockLogger {
 
 export function createMockGithubClient(overrides?: Partial<GithubClient>): GithubClient {
   return {
-    getRepo: vi.fn(),
-    getLatestRelease: vi.fn(),
+    getRepo: vi.fn().mockReturnValue(okAsync()),
+    getLatestRelease: vi.fn().mockReturnValue(okAsync()),
     ...overrides,
   };
 }

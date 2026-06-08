@@ -1,9 +1,10 @@
-import { err, ok, Result, ResultAsync } from 'neverthrow';
+import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { GithubClient } from '@/github/github.client.js';
+import type { Repo } from '@/github/github.schema.js';
 import type { Logger } from '@/logger/logger.js';
 import type { ConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
-import type { RepositoryRepo } from '@/repository/repository.repo.js';
+import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import type {
   Subscription,
   SubscriptionRepo,
@@ -15,7 +16,7 @@ import type { AppError, HttpError } from '@/utils/errors.js';
 import type { SubscribeInput } from './subscription.schema.js';
 
 export type SubscriptionService = {
-  subscribe(input: SubscribeInput): Promise<Result<void, AppError>>;
+  subscribe(input: SubscribeInput): ResultAsync<void, AppError>;
   confirm(token: string): ResultAsync<void, AppError>;
   unsubscribe(token: string): ResultAsync<void, AppError>;
   listSubscriptions(email: string): ResultAsync<SubscriptionsListItem[], AppError>;
@@ -67,62 +68,45 @@ export function createSubscriptionService({
 }: Deps): SubscriptionService {
   const log = logger.child({ module: 'subscription.service' });
 
-  async function subscribe(input: SubscribeInput) {
-    const { email, repo: repoFullName } = input;
-    const { owner, name } = parseRepoFullName(repoFullName);
+  // ==================================
+  // Subscribe
+  // ==================================
 
-    // 1. Verify the repository exists
-    const githubRepoResult = await githubClient.getRepo(owner, name);
+  // 1. Verify the repository exists
+  function getGHRepo(owner: string, name: string) {
+    return githubClient.getRepo(owner, name).mapErr((e) => mapHttpErrorToAppError(e));
+  }
 
-    if (githubRepoResult.isErr()) {
-      return err(mapHttpErrorToAppError(githubRepoResult.error));
-    }
-
-    const githubRepo = githubRepoResult.value;
-
-    // 2. Sync the verified repo into the DB
-    const updatedRepoResult = await ResultAsync.fromPromise(
-      repositoryRepo.findByFullName(githubRepo.full_name),
-      (): AppError => ({ type: 'Internal', message: 'DB error' }),
-    )
-      .andThen((existingRepo) => {
-        if (existingRepo) {
-          return ResultAsync.fromPromise(
-            repositoryRepo.update(existingRepo.id, {
-              fullName: githubRepo.full_name,
-              owner: githubRepo.owner.login,
-              name: githubRepo.name,
-              isActive: true,
-            }),
-            (): AppError => ({ type: 'Internal', message: 'DB Error: updating repo' }),
-          );
-        }
-
-        return ResultAsync.fromPromise(
-          repositoryRepo.create({
-            fullName: githubRepo.full_name,
-            owner: githubRepo.owner.login,
-            name: githubRepo.name,
-            isActive: true,
-          }),
-          (): AppError => ({ type: 'Internal', message: 'DB Error: creating repo' }),
-        );
-      })
+  // 2. Sync the verified repo into the DB
+  function updateRepoInDB(ghRepo: Repo) {
+    return repositoryRepo
+      .findByFullName(ghRepo.full_name)
+      .mapErr((e) => (e.type === 'DBNotFound' ? ('NOT_FOUND' as const) : e))
       .andThen((repo) =>
-        repo
-          ? ok(repo)
-          : err({ type: 'Internal', message: 'Failed to create or update repo' } as AppError),
-      );
+        repositoryRepo.update(repo.id, {
+          fullName: ghRepo.full_name,
+          owner: ghRepo.owner.login,
+          name: ghRepo.name,
+          isActive: true,
+        }),
+      )
+      .orElse((e) => {
+        if (e === 'NOT_FOUND') {
+          return repositoryRepo.create({
+            fullName: ghRepo.full_name,
+            owner: ghRepo.owner.login,
+            name: ghRepo.name,
+            isActive: true,
+          });
+        }
+        return err(e);
+      });
+  }
 
-    if (updatedRepoResult.isErr()) {
-      return err(updatedRepoResult.error);
-    }
-
-    const updatedRepo = updatedRepoResult.value;
-
-    // 3. Check if already subscribed and create/update subscription
-    const subscription = ResultAsync.fromPromise(
-      subscriptionRepo.findActiveByEmailAndRepoId(email, updatedRepo.id),
+  // 3. Check if already subscribed and create/update subscription
+  function checkUpdateSubscription(email: string, repo: Repository) {
+    return ResultAsync.fromPromise(
+      subscriptionRepo.findActiveByEmailAndRepoId(email, repo.id),
       () => 'DB_QUERY_FAILED' as const,
     )
       .andThen((sub) => {
@@ -136,7 +120,7 @@ export function createSubscriptionService({
           );
         }
         return ResultAsync.fromPromise(
-          subscriptionRepo.create({ email, repositoryId: updatedRepo.id }),
+          subscriptionRepo.create({ email, repositoryId: repo.id }),
           () => 'SUB_CREATE_FAILED' as const,
         );
       })
@@ -147,37 +131,57 @@ export function createSubscriptionService({
         }
         return { type: 'Internal', message: 'Failed to create subscription' };
       });
+  }
 
-    // 4. Create subscription token
-    const tokenResult = subscription.andThen((sub) =>
-      ResultAsync.fromPromise(
-        tokenService.createToken({
-          email,
-          repositoryId: sub.repositoryId,
-          type: 'confirm',
-        }),
-        (): AppError => ({ type: 'Internal', message: 'Failed to create token' }),
-      ),
+  // 4. Create subscription token
+  function createSubscrToken(subscription: Subscription, email: string) {
+    return ResultAsync.fromPromise(
+      tokenService.createToken({
+        email,
+        repositoryId: subscription.repositoryId,
+        type: 'confirm',
+      }),
+      (): AppError => ({ type: 'Internal', message: 'Failed to create token' }),
+    );
+  }
+
+  // 5. Enqueue confirmation email
+  function enqueueEmail(token: string, email: string, repoName: string) {
+    const { htmlUrl: confirmHtmlUrl, apiUrl: confirmApiUrl } = tokenService.getTokenUrls(
+      token,
+      'confirm',
     );
 
-    // 5. Enqueue confirmation email
-    const emailOk = tokenResult.andThen((token) => {
-      const { htmlUrl: confirmHtmlUrl, apiUrl: confirmApiUrl } = tokenService.getTokenUrls(
-        token,
-        'confirm',
-      );
-      return ResultAsync.fromPromise(
-        confirmationEmailsQueue.enqueueConfirmationEmail({
-          email,
-          repoName: githubRepo.full_name,
-          confirmHtmlUrl,
-          confirmApiUrl,
-        }),
-        (): AppError => ({ type: 'Internal', message: 'Failed to enqueue confirmation email' }),
-      );
-    });
+    return ResultAsync.fromPromise(
+      confirmationEmailsQueue.enqueueConfirmationEmail({
+        email,
+        repoName,
+        confirmHtmlUrl,
+        confirmApiUrl,
+      }),
+      (): AppError => ({ type: 'Internal', message: 'Failed to enqueue confirmation email' }),
+    );
+  }
 
-    return emailOk.andThen(() => ok());
+  function handleSubsctiption(email: string, repo: Repository) {
+    return checkUpdateSubscription(email, repo)
+      .andThen((sub) => createSubscrToken(sub, email))
+      .andThen((token) => enqueueEmail(token, email, repo.fullName));
+  }
+
+  function subscribe(input: SubscribeInput) {
+    const { email, repo: repoFullName } = input;
+    const { owner, name } = parseRepoFullName(repoFullName);
+
+    return getGHRepo(owner, name)
+      .andThen((ghRepo) => updateRepoInDB(ghRepo))
+      .andThen((repo) => handleSubsctiption(email, repo))
+      .mapErr(
+        (e): AppError =>
+          e.type === 'DBError' || e.type === 'DBNotFound'
+            ? { type: 'Internal', message: 'DB error' }
+            : e,
+      );
   }
 
   function confirm(token: string) {
@@ -204,14 +208,10 @@ export function createSubscriptionService({
         ),
       )
       .andThen(({ token }) =>
-        ResultAsync.fromPromise(
-          repositoryRepo.update(token.repositoryId, { isActive: true }),
-          (): AppError => ({ type: 'Internal', message: 'DB error' }),
-        ).andThen((repo) =>
-          repo
-            ? ok({ token })
-            : err<never, AppError>({ type: 'Internal', message: 'Failed to activate repository' }),
-        ),
+        repositoryRepo
+          .update(token.repositoryId, { isActive: true })
+          .map(() => ({ token }))
+          .mapErr((): AppError => ({ type: 'Internal', message: 'Error activating repo' })),
       )
       .andTee(({ token }) => {
         tokenService.deleteToken(token.id).catch((error: unknown) => {

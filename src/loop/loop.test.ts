@@ -1,4 +1,4 @@
-import { errAsync, okAsync, ResultAsync } from 'neverthrow';
+import { errAsync, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Logger } from '@/logger/logger.js';
@@ -130,51 +130,6 @@ describe('loop', () => {
     await startPromise;
   });
 
-  it('tracks crashes and stops when afterCrashDelayMs is null', async () => {
-    const run = vi.fn(() => ResultAsync.fromSafePromise(Promise.reject(new Error('boom'))));
-
-    const loop = createLoop({
-      log: logger,
-      run,
-      getNextDelayMs: () => 1000,
-      afterCrashDelayMs: null,
-    });
-
-    await loop.start();
-
-    const metrics = loop.getMetrics();
-
-    expect(metrics.crashes).toBe(1);
-    expect(metrics.failures).toBe(0);
-    expect(metrics.totalIterations).toBe(1);
-    expect(metrics.isRunning).toBe(false);
-  });
-
-  it('retries after crash when afterCrashDelayMs is set', async () => {
-    const run = vi
-      .fn()
-      .mockImplementationOnce(() => ResultAsync.fromSafePromise(Promise.reject(new Error('boom'))))
-      .mockImplementation(() => okAsync());
-
-    const loop = createLoop({
-      log: logger,
-      run,
-      getNextDelayMs: () => 1_000,
-      afterCrashDelayMs: 500,
-    });
-
-    const startPromise = loop.start();
-
-    await vi.advanceTimersByTimeAsync(100);
-    expect(run).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(600);
-    expect(run).toHaveBeenCalledTimes(2);
-
-    await loop.stop();
-    await startPromise;
-  });
-
   it('stop() prevents further iterations', async () => {
     const run = vi.fn(() => okAsync());
 
@@ -256,8 +211,8 @@ describe('loop', () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     const m1 = loop.getMetrics();
-    m1.crashes = 999;
-    expect(loop.getMetrics().crashes).not.toBe(999);
+    m1.failures = 999;
+    expect(loop.getMetrics().failures).not.toBe(999);
 
     const m2 = loop.getMetrics();
     expect(m1).not.toBe(m2);

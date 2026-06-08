@@ -17,13 +17,6 @@ export type LoopOptions<V, E> = {
 
   onStart?: () => void;
   getFirstRunDelayMs?: () => number;
-
-  /**
-   * On run throw continue loop after delay or stop the loop if null
-   *
-   * Default: `null`
-   * */
-  afterCrashDelayMs?: number | null;
 };
 
 type LoopMetrics = {
@@ -31,7 +24,6 @@ type LoopMetrics = {
   consecutiveErrors: number;
   totalIterations: number;
   failures: number;
-  crashes: number;
   startedAt: Date | null;
   stoppedAt: Date | null;
 };
@@ -48,13 +40,11 @@ export function createLoop<V, E>({
   getNextDelayMs,
   onStart,
   getFirstRunDelayMs,
-  afterCrashDelayMs = null,
 }: LoopOptions<V, E>): LoopLifecycle {
   const metrics: Omit<LoopMetrics, 'isRunning'> = {
     consecutiveErrors: 0,
     totalIterations: 0,
     failures: 0,
-    crashes: 0,
     startedAt: null,
     stoppedAt: null,
   };
@@ -78,28 +68,7 @@ export function createLoop<V, E>({
     }
 
     while (isRunning()) {
-      const runAttempt = await ResultAsync.fromPromise(
-        run(controller.signal),
-        () => 'RUN_CRASH' as const,
-      );
-
-      if (runAttempt.isErr()) {
-        metrics.consecutiveErrors++;
-        metrics.crashes++;
-        metrics.totalIterations++;
-
-        if (afterCrashDelayMs === null) {
-          log.warn({ afterCrashDelayMs }, `Run crashed, stopping...`);
-          controller.abort();
-          break;
-        }
-
-        log.warn({ afterCrashDelayMs }, `Run crashed, retrying...`);
-        await sleep(afterCrashDelayMs, controller.signal);
-        continue;
-      }
-
-      const runResult = runAttempt.value;
+      const runResult = await run(controller.signal);
 
       if (runResult.isOk()) {
         metrics.consecutiveErrors = 0;

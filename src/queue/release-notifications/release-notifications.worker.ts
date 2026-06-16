@@ -33,7 +33,7 @@ export function createProcessReleaseNotificationJob({
     if (latestTagResult.isErr()) {
       const error = latestTagResult.error;
       log.error({ error }, `Failed to get latest tag for repo ${repoId.toString()}`);
-      throw new Error(error.message);
+      throw new Error(error.type);
     }
 
     const latestTag = latestTagResult.value;

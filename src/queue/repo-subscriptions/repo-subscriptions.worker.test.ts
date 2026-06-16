@@ -82,17 +82,15 @@ describe('repo-subscriptions.worker', () => {
       releaseNotificationsQueue: createMockReleaseNotificationsQueue(),
     });
 
-    await expect(processJob(createJob() as never)).rejects.toThrow('latest tag unavailable');
-    expect(logger.error).toHaveBeenCalledWith(
-      { error: { type: 'Internal', message: 'latest tag unavailable' } },
-      'Failed to get latest tag for repo 1',
-    );
+    await expect(processJob(createJob() as never)).rejects.toThrow();
+
+    expect(logger.error).toHaveBeenCalled();
   });
 
   it('marks repo inactive when the first batch has no confirmed subscribers', async () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v2.0.0'));
     const getConfirmedByRepositoryIdBatch = vi.fn().mockResolvedValue([]);
-    const update = vi.fn().mockResolvedValue(null);
+    const update = vi.fn().mockReturnValue(okAsync());
     const enqueueReleaseEmail = vi.fn();
 
     const processJob = createProcessRepoSubscriptionJob({

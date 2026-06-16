@@ -4,64 +4,14 @@ import { err, ok, ResultAsync } from 'neverthrow';
 import type { Cache } from '@/cache/cache.js';
 import type { RepositoryRepoConfig } from '@/config/config.js';
 import type { Logger } from '@/logger/logger.js';
-import type { AppError } from '@/utils/errors.js';
 import { db } from '@/db/client.js';
+import { dbErrors } from '@/db/errors.js';
 import { repositories } from '@/db/schema.js';
-import { toAppError } from '@/utils/errors.js';
 
 export type Repository = typeof repositories.$inferSelect;
 export type NewRepository = typeof repositories.$inferInsert;
 
-export type RepositoryRepo = {
-  create(data: NewRepository): Promise<Repository>;
-  update(id: number, data: Partial<NewRepository>): Promise<Repository | null>;
-  findByFullName(fullName: string): Promise<Repository | null>;
-  getLatestTag(repoId: number): ResultAsync<string, AppError>;
-  findBatchForScanning(limit: number): Promise<Repository[]>;
-  updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string): Promise<void>;
-};
-
-async function findById(id: number) {
-  const [row] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1);
-  return row ?? null;
-}
-
-async function findByFullName(fullName: string) {
-  const [row] = await db
-    .select()
-    .from(repositories)
-    .where(eq(repositories.fullName, fullName))
-    .limit(1);
-  return row ?? null;
-}
-
-async function create(data: NewRepository) {
-  const [row] = await db.insert(repositories).values(data).returning();
-  if (!row) throw new Error('DB error: failed to create repository');
-  return row;
-}
-
-async function update(id: number, data: Partial<NewRepository>) {
-  const [row] = await db
-    .update(repositories)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(repositories.id, id))
-    .returning();
-  return row ?? null;
-}
-
-async function findBatchForScanning(limit: number) {
-  return db
-    .select()
-    .from(repositories)
-    .where(eq(repositories.isActive, true))
-    .orderBy(sql`${repositories.lastCheckedAt} asc NULLS FIRST`)
-    .limit(limit);
-}
-
-function getCacheKey(repoId: number): string {
-  return `repo:${repoId.toString()}:latest_tag`;
-}
+export type RepositoryRepo = ReturnType<typeof createRepositoryRepo>;
 
 type Deps = {
   config: RepositoryRepoConfig;
@@ -69,8 +19,39 @@ type Deps = {
   logger: Logger;
 };
 
-export function createRepositoryRepo({ config, cache, logger }: Deps): RepositoryRepo {
+export function createRepositoryRepo({ config, cache, logger }: Deps) {
   const log = logger.child({ module: 'repository.repo' });
+  const ENTITY = 'Repo';
+
+  function create(data: NewRepository) {
+    return ResultAsync.fromPromise(db.insert(repositories).values(data).returning(), (e) =>
+      dbErrors.DBError(e),
+    ).andThen(([row]) =>
+      row ? ok(row) : err(dbErrors.DBError(new Error(`${ENTITY} not created`))),
+    );
+  }
+
+  function update(id: number, data: Partial<NewRepository>) {
+    return ResultAsync.fromPromise(
+      db
+        .update(repositories)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(repositories.id, id))
+        .returning(),
+      (e) => dbErrors.DBError(e),
+    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { id }))));
+  }
+
+  function findByFullName(fullName: string) {
+    return ResultAsync.fromPromise(
+      db.select().from(repositories).where(eq(repositories.fullName, fullName)).limit(1),
+      (e) => dbErrors.DBError(e),
+    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { fullName }))));
+  }
+
+  function getCacheKey(repoId: number) {
+    return `repo:${repoId.toString()}:latest_tag`;
+  }
 
   function getCacheLatestTag(cacheKey: string) {
     return ResultAsync.fromPromise(cache.get(cacheKey), () => 'CACHE_ERROR' as const).andThen(
@@ -78,44 +59,64 @@ export function createRepositoryRepo({ config, cache, logger }: Deps): Repositor
     );
   }
 
-  async function setCacheLatestTag(cacheKey: string, tag: string) {
-    await cache.set(cacheKey, tag, config.tagCacheTtlSeconds);
+  function setCacheLatestTag(cacheKey: string, tag: string) {
+    return ResultAsync.fromSafePromise(
+      cache.set(cacheKey, tag, config.tagCacheTtlSeconds).catch((error: unknown) => {
+        log.warn({ error }, 'Cache write error:');
+      }),
+    );
+  }
+
+  function findById(id: number) {
+    return ResultAsync.fromPromise(
+      db.select().from(repositories).where(eq(repositories.id, id)).limit(1),
+      (e) => dbErrors.DBError(e),
+    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { id }))));
   }
 
   function getDBLatestTag(repoId: number) {
-    return ResultAsync.fromPromise(findById(repoId), toAppError).andThen((repo) => {
-      const tag = repo?.lastSeenTag;
-      return tag
-        ? ok(tag)
-        : err({ type: 'NotFound', message: 'No tag found for repository' } as AppError);
-    });
+    return findById(repoId).andThen(({ lastSeenTag }) =>
+      lastSeenTag ? ok(lastSeenTag) : err(dbErrors.DBNotFound(ENTITY, { id: repoId })),
+    );
   }
 
   function getLatestTag(repoId: number) {
     const cacheKey = getCacheKey(repoId);
     return getCacheLatestTag(cacheKey).orElse(() =>
-      getDBLatestTag(repoId).andTee((tag) => {
-        setCacheLatestTag(cacheKey, tag).catch((error: unknown) => {
-          log.warn({ error }, 'Cache write failed:');
-        });
-      }),
+      getDBLatestTag(repoId).andTee((tag) => setCacheLatestTag(cacheKey, tag)),
     );
   }
 
-  async function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
-    await db
-      .update(repositories)
-      .set({
-        lastCheckedAt: lastCheckedAt,
-        ...(lastSeenTag && { lastSeenTag }),
-      })
-      .where(eq(repositories.id, repoId));
+  function findBatchForScanning(limit: number) {
+    return ResultAsync.fromPromise(
+      db
+        .select()
+        .from(repositories)
+        .where(eq(repositories.isActive, true))
+        .orderBy(sql`${repositories.lastCheckedAt} asc NULLS FIRST`)
+        .limit(limit),
+      (e) => dbErrors.DBError(e),
+    );
+  }
 
-    if (lastSeenTag) {
-      await setCacheLatestTag(getCacheKey(repoId), lastSeenTag).catch((error: unknown) => {
-        log.warn({ error }, 'Cache write error:');
-      });
-    }
+  function updateRowAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
+    return ResultAsync.fromPromise(
+      db
+        .update(repositories)
+        .set({
+          lastCheckedAt: lastCheckedAt,
+          ...(lastSeenTag && { lastSeenTag }),
+        })
+        .where(eq(repositories.id, repoId))
+        .returning(),
+      (e) => dbErrors.DBError(e),
+    ).andThen(([row]) => (row ? ok(row) : err(dbErrors.DBNotFound(ENTITY, { id: repoId }))));
+  }
+
+  function updateAfterScan(repoId: number, lastCheckedAt: Date, lastSeenTag?: string) {
+    return updateRowAfterScan(repoId, lastCheckedAt, lastSeenTag).andThen((repo) =>
+      repo.lastSeenTag ? setCacheLatestTag(getCacheKey(repoId), repo.lastSeenTag) : ok(),
+    );
   }
 
   return {

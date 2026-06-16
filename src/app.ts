@@ -15,7 +15,6 @@ import { createRepositoryRepo } from '@/repository/repository.repo.js';
 import { createScannerLoop } from '@/scanner/scanner.loop.js';
 import { createFastifyServer } from '@/server/server.js';
 import { createSubscriptionApi } from '@/subscription/subscription.api.js';
-import { createSubscriptionController } from '@/subscription/subscription.controller.js';
 import { createSubscriptionRepo } from '@/subscription/subscription.repo.js';
 import { createSubscriptionService } from '@/subscription/subscription.service.js';
 import { createSubscriptionWeb } from '@/subscription/subscription.web.js';
@@ -102,9 +101,8 @@ export function createApp(config: Config) {
   ];
 
   // server
-  const subscriptionController = createSubscriptionController({ subscriptionService });
-  const subscriptionApi = createSubscriptionApi({ subscriptionController });
-  const subscriptionWeb = createSubscriptionWeb({ subscriptionController });
+  const subscriptionApi = createSubscriptionApi({ subscriptionService });
+  const subscriptionWeb = createSubscriptionWeb({ subscriptionService });
   const app = createFastifyServer({ logger, subscriptionApi, subscriptionWeb });
 
   return {

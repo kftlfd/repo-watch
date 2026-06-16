@@ -1,8 +1,14 @@
 import { errAsync, ResultAsync } from 'neverthrow';
 
-import type { HttpError } from '@/utils/errors.js';
+import type {
+  HttpNotFoundError,
+  HttpTooManyRequestsError,
+  HttpUnautorizedError,
+  HttpUnknownError,
+} from '@/utils/errors.js';
+import { httpErrors } from '@/utils/errors.js';
 
-function parseRetryAfterSeconds(header: string | null | undefined): number | null {
+function parseRetryAfterSeconds(header: string | null | undefined) {
   if (!header) return null;
 
   const seconds = Number(header);
@@ -18,7 +24,7 @@ function parseRetryAfterSeconds(header: string | null | undefined): number | nul
   return null;
 }
 
-function parseRateLimitResetSeconds(header: string | null | undefined): number | null {
+function parseRateLimitResetSeconds(header: string | null | undefined) {
   if (!header) return null;
 
   const resetAtSeconds = Number(header);
@@ -29,14 +35,14 @@ function parseRateLimitResetSeconds(header: string | null | undefined): number |
   return null;
 }
 
-function getRetryAfterSeconds(response: Response): number | null {
+function getRetryAfterSeconds(response: Response) {
   return (
     parseRetryAfterSeconds(response.headers.get('retry-after')) ??
     parseRateLimitResetSeconds(response.headers.get('x-ratelimit-reset'))
   );
 }
 
-function isGithubRateLimitResponse(response: Response, bodyText: string): boolean {
+function isGithubRateLimitResponse(response: Response, bodyText: string) {
   const remaining = response.headers.get('x-ratelimit-remaining');
   if (response.status === 429) return true;
   if (response.status !== 403) return false;
@@ -55,9 +61,15 @@ function parseRateLimitResponse(response: Response, bodyText: string): ParseLimi
   return { isRateLimitError: true, retryAfterSeconds: getRetryAfterSeconds(response) };
 }
 
-export function mapResponseToError(response: Response): ResultAsync<never, HttpError> {
+export type HttpRequestError =
+  | HttpNotFoundError
+  | HttpTooManyRequestsError
+  | HttpUnautorizedError
+  | HttpUnknownError;
+
+export function mapResponseToError(response: Response): ResultAsync<never, HttpRequestError> {
   if (response.status === 404) {
-    return errAsync<never, HttpError>({ type: 'NotFound', message: 'Repo not found' });
+    return errAsync(httpErrors.NotFound('Repo not found'));
   }
 
   const bodyTextResult = ResultAsync.fromSafePromise(response.text().catch(() => ''));
@@ -66,20 +78,13 @@ export function mapResponseToError(response: Response): ResultAsync<never, HttpE
     const res = parseRateLimitResponse(response, body);
 
     if (res.isRateLimitError) {
-      return errAsync<never, HttpError>({
-        type: 'TooManyRequests',
-        retryAfterSeconds: res.retryAfterSeconds,
-      });
+      return errAsync(httpErrors.TooManyRequests(res.retryAfterSeconds));
     }
 
     if (response.status === 401 || response.status === 403) {
-      return errAsync<never, HttpError>({ type: 'Unauthorized', message: 'Authentication failed' });
+      return errAsync(httpErrors.Unauthorized('Authentication failed'));
     }
 
-    return errAsync<never, HttpError>({
-      type: 'Unknown',
-      statusCode: response.status,
-      message: response.statusText,
-    });
+    return errAsync(httpErrors.Unknown(response.status, response.statusText));
   });
 }

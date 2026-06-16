@@ -1,7 +1,9 @@
 import { createHmac } from 'crypto';
+import { errAsync, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TokenServiceConfig } from '@/config/config.js';
+import { dbErrors } from '@/db/errors.js';
 import { createTokenRecord } from '@/test/factories.js';
 import { createMockTokenRepo } from '@/test/mocks.js';
 import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
@@ -56,8 +58,8 @@ describe('token.service', () => {
     const rawToken = 'raw-token';
     const expectedHash = createHmac('sha256', config.serverSecret).update(rawToken).digest('hex');
     const storedToken = createTokenRecord({ type: 'confirm' });
-    const findValidByHashAndType = vi.fn().mockResolvedValue(storedToken);
-    const tokenRepo = createMockTokenRepo({ findValidByHashAndType });
+    const findValidByHashAndType = vi.fn().mockReturnValue(okAsync(storedToken));
+    const tokenRepo = createMockTokenRepo({ getValidByHashAndType: findValidByHashAndType });
     const service = createTokenService({ config, tokenRepo });
 
     const result = await expectOkAsync(service.validateToken(rawToken, 'confirm'));
@@ -67,8 +69,8 @@ describe('token.service', () => {
   });
 
   it('validateToken returns NotFound for missing or expired tokens', async () => {
-    const findValidByHashAndType = vi.fn().mockResolvedValue(null);
-    const tokenRepo = createMockTokenRepo({ findValidByHashAndType });
+    const getValidByHashAndType = vi.fn().mockReturnValue(errAsync(dbErrors.DBNotFound('Token')));
+    const tokenRepo = createMockTokenRepo({ getValidByHashAndType });
     const service = createTokenService({ config, tokenRepo });
 
     const error = await expectErrAsync(service.validateToken('missing-token', 'confirm'));

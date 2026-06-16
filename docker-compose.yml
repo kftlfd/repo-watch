@@ -1,8 +1,7 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: kftlfd/repo-watch:1.0
+    build: .
     ports:
       - 3000:3000
     env_file:
@@ -22,7 +21,7 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./.data/db:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -39,14 +38,10 @@ services:
     ports:
       - 6379:6379
     volumes:
-      - redis_data:/data
+      - ./.data/redis:/data
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-
-volumes:
-  postgres_data:
-  redis_data:

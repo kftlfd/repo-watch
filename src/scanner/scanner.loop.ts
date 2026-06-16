@@ -1,11 +1,10 @@
-import { err, errAsync, Result, ResultAsync } from 'neverthrow';
+import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
 import type { Logger } from '@/logger/logger.js';
 import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
-import type { HttpError } from '@/utils/errors.js';
 import { createLoop } from '@/loop/loop.js';
 import { sleep } from '@/utils/sleep.js';
 
@@ -21,37 +20,53 @@ export function createFetchWithRetryFn({
   /**
    * Keep retrying with exponential backoff on rate-limits until success or non-rate-limit error
    */
-  return async function fetchWithRetry(
-    owner: string,
-    name: string,
-    signal?: AbortSignal,
-  ): Promise<Result<string, HttpError | 'ABORTED'>> {
+  async function retryFetchUntilValidResponse(owner: string, name: string, signal?: AbortSignal) {
     let delayMs = config.initialRetryDelay;
 
     while (true) {
-      if (signal?.aborted) return err('ABORTED');
+      if (signal?.aborted) return { type: 'ABORTED' as const };
 
       const result = await githubClient.getLatestRelease(owner, name);
 
       if (result.isOk()) {
-        return result;
+        return { type: 'OK' as const, tag: result.value };
       }
 
       const error = result.error;
-      if (error.type !== 'TooManyRequests') {
-        return err(error);
+      if (error.type !== 'HttpTooManyRequests') {
+        return { type: 'HTTP_ERROR' as const, error };
       }
 
       let retryDelayMs = error.retryAfterSeconds === null ? null : error.retryAfterSeconds * 1_000;
       if (retryDelayMs === null) {
-        retryDelayMs = delayMs;
+        retryDelayMs = Math.ceil(Math.random() * delayMs); // backoff jitter
         delayMs *= 2;
       }
 
-      log.info({ retryDelayMs }, 'Rete limit detected, scheduled retry');
+      log.info({ retryDelayMs }, 'Rate limit detected, scheduled retry');
       await sleep(retryDelayMs, signal);
     }
-  };
+  }
+
+  function fetchWithRetry(owner: string, name: string, signal?: AbortSignal) {
+    return ResultAsync.fromPromise(retryFetchUntilValidResponse(owner, name, signal), () => ({
+      type: 'FETCH_CRASH' as const,
+    })).andThen((res) => {
+      switch (res.type) {
+        case 'OK':
+          return ok(res.tag);
+        case 'ABORTED':
+          return err({ type: 'ABORTED' as const });
+        case 'HTTP_ERROR':
+          return err({ type: 'HTTP_ERROR' as const, error: res.error });
+        default:
+          res satisfies never;
+          throw new Error('unhandled result case');
+      }
+    });
+  }
+
+  return fetchWithRetry;
 }
 
 type FetchWithRetryFn = ReturnType<typeof createFetchWithRetryFn>;
@@ -67,64 +82,84 @@ export function createProcessRepositoryFn({
   fetchWithRetry: FetchWithRetryFn;
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
 }) {
-  function updateAfterScan(repoId: number, now: Date, latestTag?: string) {
+  function enqueueSubsJob(repoId: number, repoName: string, latestTag: string) {
     return ResultAsync.fromPromise(
-      repositoryRepo.updateAfterScan(repoId, now, latestTag),
-      (error) => {
-        log.error({ error }, '[updateAfterScan] DB_ERROR');
-        return 'DB_ERROR' as const;
-      },
+      repoSubscriptionsQueue.enqueueRepoSubscriptions({
+        repoId,
+        repoName,
+        latestTag,
+      }),
+      () => ({ type: 'ENQUEUE_ERROR' as const }),
     );
   }
 
-  return function processRepository(repo: Repository, signal?: AbortSignal) {
-    const { id: repoId, owner, name, fullName, lastSeenTag } = repo;
+  function processTag(
+    tag: string | null,
+    lastSeenTag: string | null,
+    repoId: number,
+    repoName: string,
+    now: Date,
+  ) {
+    if (tag === null) {
+      log.info({ repoName }, 'Failed to fetch repo tag');
+      return repositoryRepo.updateAfterScan(repoId, now);
+    }
+
+    if (lastSeenTag === null) {
+      log.info({ repoName, tag }, 'Saving initial release for a new repo');
+      return repositoryRepo.updateAfterScan(repoId, now, tag);
+    }
+
+    if (tag === lastSeenTag) {
+      log.info({ repoName }, 'No new releases for repo');
+      return repositoryRepo.updateAfterScan(repoId, now);
+    }
+
+    return repositoryRepo
+      .updateAfterScan(repoId, now, tag)
+      .andThen(() => enqueueSubsJob(repoId, repoName, tag))
+      .andTee(() => {
+        log.info({ repoName, latestTag: tag }, 'Subscriptions notifier enqueued');
+      });
+  }
+
+  function processRepository(repo: Repository, signal?: AbortSignal) {
     const now = new Date();
 
-    return ResultAsync.fromPromise(
-      fetchWithRetry(owner, name, signal),
-      () => 'FETCH_FN_CRASHED' as const,
-    ).andThen((tagResult) => {
-      if (tagResult.isErr()) {
-        const error = tagResult.error;
+    async function process() {
+      const fetchResult = await fetchWithRetry(repo.owner, repo.name, signal);
 
-        if (error === 'ABORTED') return errAsync(error);
+      if (fetchResult.isErr()) {
+        const fetchError = fetchResult.error;
 
-        log.error({ error, repoId, fullName }, 'Failed to fetch release');
-        return updateAfterScan(repoId, now);
+        if (fetchError.type === 'ABORTED') return { type: 'ABORTED' as const };
+
+        return processTag(null, repo.lastSeenTag, repo.id, repo.fullName, now).match(
+          () => ({ type: 'FETCH_ERROR' as const, fetchError }),
+          (processError) => ({ type: 'FETCH_PROCESS_ERROR' as const, fetchError, processError }),
+        );
       }
 
-      const latestTag = tagResult.value;
+      return processTag(fetchResult.value, repo.lastSeenTag, repo.id, repo.fullName, now).match(
+        () => ({ type: 'OK' as const }),
+        (processError) => ({ type: 'PROCESS_ERROR' as const, processError }),
+      );
+    }
 
-      if (lastSeenTag === null) {
-        log.info(`Saving initial release for a new repo: ${fullName}@${latestTag}`);
-        return updateAfterScan(repoId, now, latestTag);
+    return ResultAsync.fromPromise(process(), () => ({
+      type: 'PROCESS_REPO_CRASH' as const,
+    })).andThen((res) => {
+      switch (res.type) {
+        case 'OK':
+          return ok();
+
+        default:
+          return err(res);
       }
-
-      if (latestTag === lastSeenTag) {
-        log.info(`No new releases for ${fullName}`);
-        return updateAfterScan(repoId, now);
-      }
-
-      return updateAfterScan(repoId, now, latestTag)
-        .andThen(() =>
-          ResultAsync.fromPromise(
-            repoSubscriptionsQueue.enqueueRepoSubscriptions({
-              repoId,
-              repoName: fullName,
-              latestTag,
-            }),
-            (error) => {
-              log.error({ error, fullName, latestTag }, 'Enqueue subscriptions notifier failed');
-              return 'ENQUEUE_ERROR' as const;
-            },
-          ),
-        )
-        .andTee(() => {
-          log.info({ fullName, latestTag }, 'subscriptions notifier enqueued');
-        });
     });
-  };
+  }
+
+  return processRepository;
 }
 
 type Deps = {
@@ -152,37 +187,44 @@ export function createScannerLoop({
     repoSubscriptionsQueue,
   });
 
-  async function processRepos(repos: Repository[], signal?: AbortSignal) {
-    let count = 0;
-    let fails = 0;
-    for (const repo of repos) {
-      if (signal?.aborted) break;
-      const res = await processRepository(repo, signal);
-      count++;
-      if (res.isErr()) {
-        log.error({ error: res.error }, 'Process repo error');
-        fails++;
+  function processRepos(repos: Repository[], signal?: AbortSignal) {
+    async function process() {
+      let totalCount = 0;
+      let fails = 0;
+      for (const repo of repos) {
+        if (signal?.aborted) break;
+        const res = await processRepository(repo, signal);
+        totalCount++;
+        if (res.isErr()) {
+          log.error({ repo: repo.fullName, error: res.error }, 'Process repo error');
+          fails++;
+        }
+        await sleep(config.pollDelayMs, signal);
       }
-      await sleep(config.pollDelayMs, signal);
+      return { totalCount, fails };
     }
-    log.info({ batchSize: config.batchSize, processed: count, fails }, 'Repos batch processed');
+
+    return ResultAsync.fromPromise(process(), (e) => ({
+      type: 'PROCESS_REPOS_BATCH_CRASH' as const,
+      cause: e,
+    }));
   }
 
   const loop = createLoop({
     log,
 
     run(signal) {
-      return ResultAsync.fromPromise(
-        repositoryRepo.findBatchForScanning(config.batchSize),
-        () => 'DB_ERROR' as const,
-      ).andThen((repos) =>
-        ResultAsync.fromPromise(processRepos(repos, signal), () => 'PROCESSING_ERROR' as const),
-      );
+      return repositoryRepo
+        .findBatchForScanning(config.batchSize)
+        .andThen((repos) => processRepos(repos, signal));
     },
 
     getNextDelayMs({ runResult }) {
       if (runResult.isErr()) {
         log.error({ error: runResult.error }, 'Batch failed');
+      } else {
+        const { totalCount: processed, fails } = runResult.value;
+        log.info({ batchSize: config.batchSize, processed, fails }, 'Repos batch processed');
       }
       return config.scanIntervalMs;
     },

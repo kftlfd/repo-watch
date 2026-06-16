@@ -56,7 +56,7 @@ export const tokens = pgTable(
     tokenHash: pg.text('token_hash').notNull().unique(),
     email: pg.text('email').notNull(),
     repositoryId: pg.serial('repository_id').references(() => repositories.id),
-    type: pg.text('type').notNull(), // 'confirm' | 'unsubscribe'
+    type: pg.text('type', { enum: ['confirm', 'unsubscribe'] }).notNull(),
     expiresAt: pg.timestamp('expires_at').notNull(),
     createdAt: pg.timestamp('created_at').defaultNow().notNull(),
   }),

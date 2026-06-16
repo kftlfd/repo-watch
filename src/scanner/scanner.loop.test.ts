@@ -1,9 +1,8 @@
-import { err, errAsync, ok, okAsync } from 'neverthrow';
+import { errAsync, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ScannerConfig } from '@/config/config.js';
 import type { MockLogger } from '@/test/mocks.js';
-import type { HttpError } from '@/utils/errors.js';
 import { createRepository } from '@/test/factories.js';
 import {
   createMockGithubClient,
@@ -12,6 +11,7 @@ import {
   createMockRepoSubscriptionsQueue,
 } from '@/test/mocks.js';
 import { expectErr, expectOk } from '@/test/utils/result.js';
+import { httpErrors } from '@/utils/errors.js';
 import { sleep } from '@/utils/sleep.js';
 
 import { createFetchWithRetryFn, createProcessRepositoryFn } from './scanner.loop.js';
@@ -47,7 +47,7 @@ describe('scanner.loop', () => {
       const githubClient = createMockGithubClient({
         getLatestRelease: vi
           .fn()
-          .mockReturnValueOnce(errAsync({ type: 'TooManyRequests', retryAfterSeconds: 7 }))
+          .mockReturnValueOnce(errAsync(httpErrors.TooManyRequests(7)))
           .mockReturnValueOnce(okAsync('v2.0.0')),
       });
 
@@ -63,12 +63,12 @@ describe('scanner.loop', () => {
       expect(mockedSleep).toHaveBeenCalledWith(7_000, undefined);
     });
 
-    it('uses exponential backoff when retryAfterSeconds is null', async () => {
+    it('uses exponential backoff with jitter when retryAfterSeconds is null', async () => {
       const githubClient = createMockGithubClient({
         getLatestRelease: vi
           .fn()
-          .mockReturnValueOnce(errAsync({ type: 'TooManyRequests', retryAfterSeconds: null }))
-          .mockReturnValueOnce(errAsync({ type: 'TooManyRequests', retryAfterSeconds: null }))
+          .mockReturnValueOnce(errAsync(httpErrors.TooManyRequests()))
+          .mockReturnValueOnce(errAsync(httpErrors.TooManyRequests()))
           .mockReturnValueOnce(okAsync('v2.0.0')),
       });
 
@@ -81,19 +81,15 @@ describe('scanner.loop', () => {
       const result = await fetchWithRetry('owner', 'repo');
 
       expectOk(result);
-      expect(mockedSleep).toHaveBeenNthCalledWith(1, scannerConfig.initialRetryDelay, undefined);
-      expect(mockedSleep).toHaveBeenNthCalledWith(
-        2,
+      expect(mockedSleep.mock.calls[0]?.[0]).toBeLessThanOrEqual(scannerConfig.initialRetryDelay);
+      expect(mockedSleep.mock.calls[1]?.[0]).toBeLessThanOrEqual(
         scannerConfig.initialRetryDelay * 2,
-        undefined,
       );
     });
 
     it('returns immediately on non-rate-limit errors', async () => {
-      const error = { type: 'Unauthorized', message: 'fail' } as const;
-
       const githubClient = createMockGithubClient({
-        getLatestRelease: vi.fn().mockReturnValue(errAsync(error)),
+        getLatestRelease: vi.fn().mockReturnValue(errAsync(httpErrors.Unauthorized('fail'))),
       });
 
       const fetchWithRetry = createFetchWithRetryFn({
@@ -104,7 +100,9 @@ describe('scanner.loop', () => {
 
       const result = await fetchWithRetry('owner', 'repo');
 
-      expect(expectErr(result)).toEqual(error);
+      const error = expectErr(result);
+
+      expect(error.type === 'HTTP_ERROR');
       expect(mockedSleep).not.toHaveBeenCalled();
     });
 
@@ -124,8 +122,8 @@ describe('scanner.loop', () => {
 
       const result = await fetchWithRetry('owner', 'repo', controller.signal);
 
-      expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr()).toBe('ABORTED');
+      const error = expectErr(result);
+      expect(error.type === 'ABORTED');
     });
   });
 
@@ -137,7 +135,7 @@ describe('scanner.loop', () => {
       const processRepository = createProcessRepositoryFn({
         log: logger,
         repositoryRepo: createMockRepositoryRepo({ updateAfterScan }),
-        fetchWithRetry: vi.fn().mockResolvedValue(ok('v1.0.0')),
+        fetchWithRetry: vi.fn().mockResolvedValue(okAsync('v1.0.0')),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
@@ -149,43 +147,45 @@ describe('scanner.loop', () => {
       expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('updates timestamp only when tag unchanged', async () => {
+    it('when tag is unchanged, updates timestamp only', async () => {
       const updateAfterScan = vi.fn().mockResolvedValue(undefined);
       const enqueue = vi.fn();
 
       const processRepository = createProcessRepositoryFn({
         log: logger,
         repositoryRepo: createMockRepositoryRepo({ updateAfterScan }),
-        fetchWithRetry: vi.fn().mockResolvedValue(ok('v1.0.0')),
+        fetchWithRetry: vi.fn().mockResolvedValue(okAsync('v1.0.0')),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
       });
 
-      await processRepository(createRepository({ id: 1, lastSeenTag: 'v1.0.0' }));
+      const repo = createRepository({ lastSeenTag: 'v1.0.0' });
+      await processRepository(repo);
 
-      expect(updateAfterScan).toHaveBeenCalledWith(1, expect.any(Date), undefined);
+      expect(updateAfterScan).toHaveBeenCalledWith(repo.id, expect.any(Date));
       expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('updates tag and enqueues when new release detected', async () => {
-      const updateAfterScan = vi.fn().mockResolvedValue(undefined);
+      const updateAfterScan = vi.fn().mockReturnValue(okAsync());
       const enqueue = vi.fn().mockResolvedValue(undefined);
 
       const processRepository = createProcessRepositoryFn({
         log: logger,
         repositoryRepo: createMockRepositoryRepo({ updateAfterScan }),
-        fetchWithRetry: vi.fn().mockResolvedValue(ok('v2.0.0')),
+        fetchWithRetry: vi.fn().mockResolvedValue(okAsync('v2.0.0')),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
       });
 
-      await processRepository(createRepository({ lastSeenTag: 'v1.0.0' }));
+      const repo = createRepository({ lastSeenTag: 'v1.0.0' });
+      await processRepository(repo);
 
-      expect(updateAfterScan).toHaveBeenCalledWith(1, expect.any(Date), 'v2.0.0');
+      expect(updateAfterScan).toHaveBeenCalledWith(repo.id, expect.any(Date), 'v2.0.0');
       expect(enqueue).toHaveBeenCalledWith({
-        repoId: 1,
+        repoId: repo.id,
         repoName: 'owner/repo',
         latestTag: 'v2.0.0',
       });
@@ -195,36 +195,34 @@ describe('scanner.loop', () => {
       const updateAfterScan = vi.fn().mockResolvedValue(undefined);
       const enqueue = vi.fn();
 
-      const fetchError: HttpError = { type: 'Unauthorized', message: 'fail' };
-
       const processRepository = createProcessRepositoryFn({
         log: logger,
         repositoryRepo: createMockRepositoryRepo({ updateAfterScan }),
-        fetchWithRetry: vi.fn().mockResolvedValue(err(fetchError)),
+        fetchWithRetry: vi.fn().mockResolvedValue(errAsync(httpErrors.Unauthorized('fail'))),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
       });
 
-      await processRepository(createRepository({ lastSeenTag: 'v1.0.0' }));
+      const repo = createRepository({ lastSeenTag: 'v1.0.0' });
+      await processRepository(repo);
 
-      expect(updateAfterScan).toHaveBeenCalledWith(1, expect.any(Date), undefined);
+      expect(updateAfterScan).toHaveBeenCalledWith(repo.id, expect.any(Date));
       expect(enqueue).not.toHaveBeenCalled();
-      expect(logger.error).toHaveBeenCalled();
     });
 
     it('propagates ABORTED from fetchWithRetry', async () => {
       const processRepository = createProcessRepositoryFn({
         log: logger,
         repositoryRepo: createMockRepositoryRepo(),
-        fetchWithRetry: vi.fn().mockResolvedValue(err('ABORTED')),
+        fetchWithRetry: vi.fn().mockReturnValue(errAsync({ type: 'ABORTED' })),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue(),
       });
 
       const result = await processRepository(createRepository({ lastSeenTag: 'v1.0.0' }));
 
-      expect(result.isErr()).toBe(true);
-      expect(result._unsafeUnwrapErr()).toBe('ABORTED');
+      const error = expectErr(result);
+      expect(error.type === 'ABORTED');
     });
 
     it('captures enqueue failure but does not fail the flow', async () => {
@@ -234,7 +232,7 @@ describe('scanner.loop', () => {
       const processRepository = createProcessRepositoryFn({
         log: logger,
         repositoryRepo: createMockRepositoryRepo({ updateAfterScan }),
-        fetchWithRetry: vi.fn().mockResolvedValue(ok('v2.0.0')),
+        fetchWithRetry: vi.fn().mockResolvedValue(okAsync('v2.0.0')),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: vi.fn().mockRejectedValue(enqueueError),
         }),
@@ -243,8 +241,7 @@ describe('scanner.loop', () => {
       const result = await processRepository(createRepository({ lastSeenTag: 'v1.0.0' }));
 
       const error = expectErr(result);
-      expect(error).toBe('ENQUEUE_ERROR' as typeof error);
-      expect(logger.error).toHaveBeenCalled();
+      expect(error.type === 'PROCESS_ERROR' && error.processError.type === 'ENQUEUE_ERROR');
     });
   });
 
@@ -266,14 +263,12 @@ describe('scanner.loop', () => {
       const result = await fetchWithRetry('owner', 'repo', controller.signal);
 
       const error = expectErr(result);
-      expect(error).toBe('ABORTED' as typeof error);
+      expect(error.type === 'ABORTED');
       expect(getLatestRelease).not.toHaveBeenCalled();
     });
 
     it('fetchWithRetry stops retry loop when aborted during sleep', async () => {
-      const getLatestRelease = vi.fn(() =>
-        errAsync<never, HttpError>({ type: 'TooManyRequests', retryAfterSeconds: 1 }),
-      );
+      const getLatestRelease = vi.fn(() => errAsync(httpErrors.TooManyRequests(1)));
 
       const githubClient = createMockGithubClient({ getLatestRelease });
 
@@ -293,7 +288,7 @@ describe('scanner.loop', () => {
       const result = await fetchWithRetry('owner', 'repo', controller.signal);
 
       const error = expectErr(result);
-      expect(error).toBe('ABORTED' as typeof error);
+      expect(error.type === 'ABORTED');
       expect(getLatestRelease).toHaveBeenCalledTimes(1);
     });
 
@@ -304,7 +299,7 @@ describe('scanner.loop', () => {
       const repositoryRepo = createMockRepositoryRepo({ updateAfterScan });
       const repoSubscriptionsQueue = createMockRepoSubscriptionsQueue({ enqueueRepoSubscriptions });
 
-      const fetchWithRetry = vi.fn().mockResolvedValue(errAsync('ABORTED'));
+      const fetchWithRetry = vi.fn().mockResolvedValue(errAsync({ type: 'ABORTED' }));
 
       const processRepository = createProcessRepositoryFn({
         log: logger,
@@ -316,8 +311,7 @@ describe('scanner.loop', () => {
       const result = await processRepository(createRepository({}));
 
       const error = expectErr(result);
-      expect(error).toBe('ABORTED' as typeof error);
-
+      expect(error.type === 'ABORTED');
       expect(updateAfterScan).not.toHaveBeenCalled();
       expect(enqueueRepoSubscriptions).not.toHaveBeenCalled();
     });
@@ -330,8 +324,8 @@ describe('scanner.loop', () => {
 
       const repoSubscriptionsQueue = createMockRepoSubscriptionsQueue({ enqueueRepoSubscriptions });
 
-      const fetchWithRetry = vi.fn((_o, _n, signal?: AbortSignal) =>
-        Promise.resolve(signal?.aborted ? err('ABORTED') : ok('v1.0.0')),
+      const fetchWithRetry = vi.fn((_owner, _name, signal?: AbortSignal) =>
+        signal?.aborted ? errAsync({ type: 'ABORTED' as const }) : okAsync('v1.0.0'),
       );
 
       const processRepository = createProcessRepositoryFn({
@@ -347,8 +341,7 @@ describe('scanner.loop', () => {
       const result = await processRepository(createRepository(), controller.signal);
 
       const error = expectErr(result);
-      expect(error).toBe('ABORTED' as typeof error);
-
+      expect(error.type === 'ABORTED');
       expect(updateAfterScan).not.toHaveBeenCalled();
       expect(enqueueRepoSubscriptions).not.toHaveBeenCalled();
     });

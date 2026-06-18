@@ -1,5 +1,4 @@
-import type { Result } from 'neverthrow';
-import { ResultAsync } from 'neverthrow';
+import type { Result, ResultAsync } from 'neverthrow';
 
 import type { Logger } from '@/logger/logger.js';
 import { sleep } from '@/utils/sleep.js';
@@ -28,11 +27,27 @@ type LoopMetrics = {
   stoppedAt: Date | null;
 };
 
-type LoopLifecycle = {
-  start: () => Promise<void>;
-  stop: () => Promise<void>;
-  getMetrics: () => LoopMetrics;
-};
+type LoopState = ReturnType<typeof newLoopState>;
+
+function newLoopState() {
+  return {
+    promise: newPromise(),
+    controller: new AbortController(),
+    startedAt: null as Date | null,
+    stoppedAt: null as Date | null,
+    consecutiveErrors: 0,
+    totalIterations: 0,
+    failures: 0,
+  };
+}
+
+function newPromise<T = void>() {
+  return Promise.withResolvers<T>();
+}
+
+function isRunning(s: LoopState) {
+  return !!s.startedAt && !s.controller.signal.aborted;
+}
 
 export function createLoop<V, E>({
   log,
@@ -40,96 +55,75 @@ export function createLoop<V, E>({
   getNextDelayMs,
   onStart,
   getFirstRunDelayMs,
-}: LoopOptions<V, E>): LoopLifecycle {
-  const metrics: Omit<LoopMetrics, 'isRunning'> = {
-    consecutiveErrors: 0,
-    totalIterations: 0,
-    failures: 0,
-    startedAt: null,
-    stoppedAt: null,
-  };
-
-  let stopPromise = promiseWithResolvers();
-
-  let controller = new AbortController();
-
-  function isRunning() {
-    return !!metrics.startedAt && !controller.signal.aborted;
-  }
-
-  async function initLoop() {
-    metrics.startedAt = new Date();
-    metrics.stoppedAt = null;
-
+}: LoopOptions<V, E>) {
+  async function initLoop(s: LoopState) {
     if (getFirstRunDelayMs) {
       const delayMs = getFirstRunDelayMs();
       log.info({ delayMs }, 'First run scheduled');
-      await sleep(delayMs, controller.signal);
+      await sleep(delayMs, s.controller.signal);
     }
 
-    while (isRunning()) {
-      const runResult = await run(controller.signal);
+    while (isRunning(s)) {
+      const runResult = await run(s.controller.signal);
 
       if (runResult.isOk()) {
-        metrics.consecutiveErrors = 0;
+        s.consecutiveErrors = 0;
       } else {
-        metrics.consecutiveErrors++;
-        metrics.failures++;
+        s.consecutiveErrors++;
+        s.failures++;
       }
-      metrics.totalIterations++;
+      s.totalIterations++;
 
       const delayMs = getNextDelayMs({
         runResult,
-        consecutiveErrors: metrics.consecutiveErrors,
-        iteration: metrics.totalIterations,
+        consecutiveErrors: s.consecutiveErrors,
+        iteration: s.totalIterations,
       });
 
-      if (!isRunning()) break;
+      if (!isRunning(s)) break;
 
       log.info({ delayMs }, 'Next iteration scheduled');
-      await sleep(delayMs, controller.signal);
+      await sleep(delayMs, s.controller.signal);
     }
-
-    log.info(`Stopped`);
-    metrics.stoppedAt = new Date();
-    stopPromise.resolve();
   }
 
-  async function start() {
-    if (isRunning()) {
-      log.warn('[start] Already running');
-      return;
+  function start() {
+    const state = newLoopState();
+
+    state.startedAt = new Date();
+    initLoop(state)
+      .then(() => {
+        log.info(`Loop stopped`);
+        state.stoppedAt = new Date();
+        state.promise.resolve();
+      })
+      .catch((error: unknown) => {
+        log.error({ error }, 'Loop error');
+        state.stoppedAt = new Date();
+        state.promise.reject(error);
+      });
+
+    function stop() {
+      log.info('Stopping loop');
+      state.controller.abort();
+      return state.promise.promise;
     }
-    stopPromise = promiseWithResolvers();
-    controller = new AbortController();
+
+    function getMetrics(): LoopMetrics {
+      return {
+        isRunning: isRunning(state),
+        startedAt: state.startedAt,
+        stoppedAt: state.stoppedAt,
+        totalIterations: state.totalIterations,
+        consecutiveErrors: state.consecutiveErrors,
+        failures: state.failures,
+      };
+    }
+
     onStart?.();
-    log.info('Starting loop...');
-    return initLoop();
+
+    return { promise: state.promise.promise, stop, getMetrics };
   }
 
-  async function stop() {
-    if (!isRunning()) {
-      log.warn('[stop] Not running');
-      return;
-    }
-    controller.abort();
-    log.info('Stopping loop...');
-    return stopPromise.promise;
-  }
-
-  function getMetrics() {
-    return { ...metrics, isRunning: isRunning() };
-  }
-
-  return { start, stop, getMetrics };
-}
-
-function promiseWithResolvers() {
-  let resolve: () => void = () => {};
-  let reject: (reason?: unknown) => void = () => {};
-  const promise = new Promise<void>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
+  return { start };
 }

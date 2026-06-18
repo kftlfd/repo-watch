@@ -9,15 +9,19 @@ import {
   validatorCompiler,
 } from 'fastify-type-provider-zod';
 
+import type { ServerConfig } from '@/config/config.js';
+import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
+import { newPromise } from '@/utils/promises.js';
 
 type Deps = {
+  config: ServerConfig;
   logger: Logger;
   subscriptionApi: FastifyPluginCallback;
   subscriptionWeb: FastifyPluginCallback;
 };
 
-export function createFastifyServer({ logger, subscriptionApi, subscriptionWeb }: Deps) {
+export function createFastifyServer({ config, logger, subscriptionApi, subscriptionWeb }: Deps) {
   const app = Fastify({
     loggerInstance: logger,
   });
@@ -51,5 +55,19 @@ export function createFastifyServer({ logger, subscriptionApi, subscriptionWeb }
   app.register(subscriptionApi, { prefix: '/api' });
   app.register(subscriptionWeb);
 
-  return app;
+  const module: Module = {
+    name: 'fastify-server',
+    async start() {
+      await app.listen({ host: config.host, port: config.port });
+      await app.ready();
+      return {
+        exited: newPromise().promise,
+        async stop() {
+          await app.close();
+        },
+      };
+    },
+  };
+
+  return module;
 }

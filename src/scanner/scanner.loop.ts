@@ -2,10 +2,11 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
+import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
-import { createLoop } from '@/loop/loop.js';
+import { createLoop } from '@/lib/loop/loop.js';
 import { sleep } from '@/utils/sleep.js';
 
 export function createFetchWithRetryFn({
@@ -230,9 +231,23 @@ export function createScannerLoop({
     },
 
     onStart() {
-      log.info({ interval: config.scanIntervalMs, batchSize: config.batchSize }, 'Scanner started');
+      log.info(
+        { interval: config.scanIntervalMs, batchSize: config.batchSize },
+        'Scanner loop started',
+      );
     },
   });
 
-  return loop;
+  const module: Module = {
+    name: 'scanner-loop',
+    start() {
+      const hanlde = loop.start();
+      return Promise.resolve({
+        exited: hanlde.promise,
+        stop: hanlde.stop,
+      });
+    },
+  };
+
+  return module;
 }

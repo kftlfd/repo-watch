@@ -2,10 +2,12 @@ import { Job, Worker } from 'bullmq';
 
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
+import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { TokenService } from '@/token/token.service.js';
+import { newPromise } from '@/utils/promises.js';
 
 import type { ReleaseEmailJob } from './release-notifications.types.js';
 import { QUEUE_NAME_RELEASE_NOTIFICATIONS } from './release-notifications.types.js';
@@ -92,8 +94,10 @@ export function createReleaseNotificationsWorker({
   tokenService,
   redis,
 }: Deps) {
+  const moduleName = 'release-notifications.worker';
+
   const log = logger.child({
-    module: 'release-notifications.worker',
+    module: moduleName,
     queue: QUEUE_NAME_RELEASE_NOTIFICATIONS,
   });
 
@@ -104,26 +108,45 @@ export function createReleaseNotificationsWorker({
     tokenService,
   });
 
-  const emailWorker = new Worker<ReleaseEmailJob>(QUEUE_NAME_RELEASE_NOTIFICATIONS, processJob, {
-    connection: redis,
-    concurrency: config.concurrency,
-    limiter: {
-      max: config.limiterMax,
-      duration: config.limiterDuration,
+  const module: Module = {
+    name: moduleName,
+
+    start() {
+      const emailWorker = new Worker<ReleaseEmailJob>(
+        QUEUE_NAME_RELEASE_NOTIFICATIONS,
+        processJob,
+        {
+          connection: redis,
+          concurrency: config.concurrency,
+          limiter: {
+            max: config.limiterMax,
+            duration: config.limiterDuration,
+          },
+        },
+      );
+
+      const promise = newPromise();
+
+      emailWorker.on('failed', (job, error) => {
+        const jobId = job?.id ?? 'unknown';
+        log.error({ error }, `Job ${jobId} failed:`);
+      });
+
+      emailWorker.on('error', (error) => {
+        log.error({ error }, 'Worker error, force-closing');
+        promise.reject(error);
+      });
+
+      log.info('Release-notifications worker started');
+
+      return Promise.resolve({
+        exited: promise.promise,
+        stop() {
+          return emailWorker.close(true);
+        },
+      });
     },
-  });
+  };
 
-  emailWorker.on('failed', (job, error) => {
-    const jobId = job?.id ?? 'unknown';
-    log.error({ error }, `Job ${jobId} failed:`);
-  });
-
-  emailWorker.on('error', (error) => {
-    log.error({ error }, 'Worker error, force-closing');
-    emailWorker.close(true).catch((closeError: unknown) => {
-      log.error({ error: closeError }, 'Error when closing worker after error');
-    });
-  });
-
-  return emailWorker;
+  return module;
 }

@@ -2,8 +2,10 @@ import { Job, Worker } from 'bullmq';
 
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
+import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { Redis } from '@/redis/redis.js';
+import { newPromise } from '@/utils/promises.js';
 
 import type { ConfirmationEmailJob } from './confirmation-emails.types.js';
 import { QUEUE_NAME_CONFIRMATION_EMAILS } from './confirmation-emails.types.js';
@@ -49,33 +51,50 @@ type Deps = {
 };
 
 export function createConfirmationEmailsWorker({ config, logger, emailService, redis }: Deps) {
+  const moduleName = 'confirmation-emails.worker';
+
   const log = logger.child({
-    module: 'confirmation-emails.worker',
+    module: moduleName,
     queue: QUEUE_NAME_CONFIRMATION_EMAILS,
   });
 
   const processJob = createProcessConfirmationEmailJob({ log, emailService });
 
-  const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
-    connection: redis,
-    concurrency: config.concurrency,
-    limiter: {
-      max: config.limiterMax,
-      duration: config.limiterDuration,
+  const module: Module = {
+    name: moduleName,
+
+    start() {
+      const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
+        connection: redis,
+        concurrency: config.concurrency,
+        limiter: {
+          max: config.limiterMax,
+          duration: config.limiterDuration,
+        },
+      });
+
+      const promise = newPromise();
+
+      worker.on('failed', (job, error) => {
+        const jobId = job?.id ?? 'unknown';
+        log.error({ error }, `Job ${jobId} failed`);
+      });
+
+      worker.on('error', (error) => {
+        log.error({ error }, 'Worker error, force-closing');
+        promise.reject(error);
+      });
+
+      log.info('Confirmation-emails worker started');
+
+      return Promise.resolve({
+        exited: promise.promise,
+        stop() {
+          return worker.close(true);
+        },
+      });
     },
-  });
+  };
 
-  worker.on('failed', (job, error) => {
-    const jobId = job?.id ?? 'unknown';
-    log.error({ error }, `Job ${jobId} failed`);
-  });
-
-  worker.on('error', (error) => {
-    log.error({ error }, 'Worker error, force-closing');
-    worker.close(true).catch((closeError: unknown) => {
-      log.error({ error: closeError }, 'Error when closing worker after error');
-    });
-  });
-
-  return worker;
+  return module;
 }

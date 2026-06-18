@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { seedRepository, seedToken } from '@/test/integration/seeds.js';
+import { db } from '@/test/integration/setup.js';
 import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 
 import { createTokenRepo } from './token.repo.js';
 
 describe('token.repo (integration)', () => {
   it('creates a token record', async () => {
-    const repo = createTokenRepo();
-    const repository = await seedRepository();
+    const repo = createTokenRepo({ db });
+    const repository = await seedRepository(db);
 
     const created = await expectOkAsync(
       repo.create({
@@ -26,9 +27,9 @@ describe('token.repo (integration)', () => {
   });
 
   it('finds a valid token by hash and type', async () => {
-    const repo = createTokenRepo();
-    const repository = await seedRepository();
-    const token = await seedToken({
+    const repo = createTokenRepo({ db });
+    const repository = await seedRepository(db);
+    const token = await seedToken(db, {
       tokenHash: 'hash-2',
       repositoryId: repository.id,
       type: 'unsubscribe',
@@ -42,15 +43,15 @@ describe('token.repo (integration)', () => {
   });
 
   it('does not return expired or mismatched tokens', async () => {
-    const repo = createTokenRepo();
-    const repository = await seedRepository();
-    await seedToken({
+    const repo = createTokenRepo({ db });
+    const repository = await seedRepository(db);
+    await seedToken(db, {
       tokenHash: 'expired-hash',
       repositoryId: repository.id,
       type: 'confirm',
       expiresAt: new Date('2000-01-01T00:00:00.000Z'),
     });
-    await seedToken({
+    await seedToken(db, {
       tokenHash: 'confirm-hash',
       repositoryId: repository.id,
       type: 'confirm',
@@ -67,9 +68,9 @@ describe('token.repo (integration)', () => {
   });
 
   it('deletes tokens by id', async () => {
-    const repo = createTokenRepo();
-    const repository = await seedRepository();
-    const token = await seedToken({
+    const repo = createTokenRepo({ db });
+    const repository = await seedRepository(db);
+    const token = await seedToken(db, {
       tokenHash: 'delete-me',
       repositoryId: repository.id,
       type: 'confirm',

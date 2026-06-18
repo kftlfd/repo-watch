@@ -1,11 +1,13 @@
 import { Job, Worker } from 'bullmq';
 
 import type { RepoSubJobConfig, WorkerConfig } from '@/config/config.js';
+import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { ReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
 import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
+import { newPromise } from '@/utils/promises.js';
 import { sleep } from '@/utils/sleep.js';
 
 import type { RepoSubscriptionsJob } from './repo-subscriptions.types.js';
@@ -102,8 +104,10 @@ export function createRepoSubscriptionsWorker({
   releaseNotificationsQueue,
   redis,
 }: Deps) {
+  const moduleName = 'repo-subscriptions.worker';
+
   const log = logger.child({
-    module: 'repo-subscriptions.worker',
+    module: moduleName,
     queue: QUEUE_NAME_REPO_SUBSCRIPTIONS,
   });
 
@@ -115,26 +119,41 @@ export function createRepoSubscriptionsWorker({
     releaseNotificationsQueue,
   });
 
-  const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
-    connection: redis,
-    concurrency: config.concurrency,
-    limiter: {
-      max: config.limiterMax,
-      duration: config.limiterDuration,
+  const module: Module = {
+    name: moduleName,
+
+    start() {
+      const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
+        connection: redis,
+        concurrency: config.concurrency,
+        limiter: {
+          max: config.limiterMax,
+          duration: config.limiterDuration,
+        },
+      });
+
+      const promise = newPromise();
+
+      worker.on('failed', (job, error) => {
+        const jobId = job?.id ?? 'unknown';
+        log.error({ error }, `Job ${jobId} failed`);
+      });
+
+      worker.on('error', (error) => {
+        log.error({ error }, 'Worker error, force-closing');
+        promise.reject(error);
+      });
+
+      log.info('Repo-subsciptions worker started');
+
+      return Promise.resolve({
+        exited: promise.promise,
+        stop() {
+          return worker.close(true);
+        },
+      });
     },
-  });
+  };
 
-  worker.on('failed', (job, error) => {
-    const jobId = job?.id ?? 'unknown';
-    log.error({ error }, `Job ${jobId} failed`);
-  });
-
-  worker.on('error', (error) => {
-    log.error({ error }, 'Worker error, force-closing');
-    worker.close(true).catch((closeError: unknown) => {
-      log.error({ error: closeError }, 'Error when closing worker after error');
-    });
-  });
-
-  return worker;
+  return module;
 }

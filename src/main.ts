@@ -1,63 +1,94 @@
 import 'dotenv/config';
 
 import { createApp } from '@/app.js';
-import { config } from '@/config/config.js';
-import { applyDBMigrations, closeDB } from '@/db/client.js';
-import { closeRedis } from '@/redis/redis.js';
+import { createConfig } from '@/config/config.js';
+import {
+  createRuntime,
+  createRuntimeStatus,
+  createShutdownController,
+} from '@/lib/runtime/runtime.js';
+import { createLogger } from '@/logger/logger.js';
+import { withTimeout } from '@/utils/promises.js';
 
-function bootstrap() {
-  const { logger, app, scannerLoop, createWorkers } = createApp(config);
+async function main() {
+  const config = createConfig();
 
-  let workers: ReturnType<typeof createWorkers> = [];
+  const logger = createLogger();
 
-  async function start() {
-    await applyDBMigrations(config.migrations, logger);
+  const runtimeStatus = createRuntimeStatus();
 
-    workers = createWorkers();
+  const modules = createApp({ config, logger });
 
-    return Promise.all([
-      scannerLoop.start(),
+  const runtime = createRuntime({ logger, modules, runtimeStatus });
 
-      app.listen({
-        host: config.server.host,
-        port: config.server.port,
-      }),
-    ]);
-  }
-
-  function setupShutdown() {
-    let shuttingDown = false;
-
-    function shutdownHandler(signal: string) {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      shutdown(signal).catch((error: unknown) => {
-        logger.error({ error }, 'Shutdown error');
-        process.exit(1);
-      });
-    }
-
-    async function shutdown(signal: string) {
-      console.log(`Shutting down (${signal})...`);
-      await scannerLoop.stop();
-      await Promise.all(workers.map((worker) => worker.close()));
-      await app.close();
-      await closeRedis();
-      await closeDB();
-      logger.info('Shutdown complete');
-      process.exit(0);
-    }
-
-    process.on('SIGINT', shutdownHandler);
-    process.on('SIGTERM', shutdownHandler);
-  }
-
-  setupShutdown();
-
-  start().catch((err: unknown) => {
-    logger.error(err, 'Bootstrap fail');
-    process.exit(1);
+  const shutdown = createShutdownController({
+    logger,
+    shutdown: runtime.stop,
+    timeoutMs: config.runtime.shutdownTimeoutMs,
   });
+
+  const finished = runtime
+    .start()
+    .then(() => runtime.waitForExit())
+    .then((m) => {
+      if (m.status === 'finished') {
+        shutdown.trigger(`module exited: ${m.name}`, new Error('module exited unexpectedly'));
+      } else {
+        shutdown.trigger(
+          `module failed: ${m.name}`,
+          new Error('module failed', { cause: m.error }),
+        );
+      }
+    })
+    .catch((err: unknown) => {
+      shutdown.trigger('runtime error', new Error('runtime error', { cause: err }));
+    });
+
+  process.on('SIGINT', (signal) => {
+    shutdown.trigger(signal);
+  });
+  process.on('SIGTERM', (signal) => {
+    shutdown.trigger(signal);
+  });
+  process.on('uncaughtException', (err) => {
+    shutdown.trigger('unhandled exception', err);
+  });
+  process.on('unhandledRejection', (err) => {
+    shutdown.trigger(
+      'unhandled promise rejection',
+      new Error('unhandled promise rejection', { cause: err }),
+    );
+  });
+
+  const errors: unknown[] = [];
+
+  await shutdown.done
+    .then(() => {
+      logger.info('Shutdown complete');
+    })
+    .catch((error: unknown) => {
+      logger.error(
+        { error, msg: error instanceof Error ? error.message : 'err' },
+        'Shutdown with error',
+      );
+      errors.push(error);
+    });
+
+  await withTimeout(
+    finished,
+    config.runtime.shutdownTimeoutMs,
+    new Error('timeout awaiting tasks finish'),
+  ).catch((error: unknown) => {
+    logger.error({ error }, 'Error awaiting tasks finish');
+    errors.push(error);
+  });
+
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'exited with errors');
+  }
 }
 
-bootstrap();
+main().catch((err: unknown) => {
+  console.error('main error:', err);
+  process.exit(1);
+});

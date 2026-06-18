@@ -28,14 +28,14 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(100);
 
     expect(run).toHaveBeenCalledTimes(1);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('runs multiple iterations over time', async () => {
@@ -47,7 +47,7 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(100);
     expect(run).toHaveBeenCalledTimes(1);
@@ -58,8 +58,8 @@ describe('loop', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(run).toHaveBeenCalledTimes(3);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('respects first run delay', async () => {
@@ -72,7 +72,7 @@ describe('loop', () => {
       getFirstRunDelayMs: () => 2_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(1_100);
     expect(run).toHaveBeenCalledTimes(0);
@@ -80,8 +80,8 @@ describe('loop', () => {
     await vi.advanceTimersByTimeAsync(1_100);
     expect(run).toHaveBeenCalledTimes(1);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('calls onStart once', async () => {
@@ -96,12 +96,12 @@ describe('loop', () => {
       onStart,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     expect(onStart).toHaveBeenCalledTimes(1);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('tracks failures and resets consecutiveErrors on success', async () => {
@@ -117,17 +117,17 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(2_000);
 
-    const metrics = loop.getMetrics();
+    const metrics = handle.getMetrics();
 
     expect(metrics.failures).toBe(2);
     expect(metrics.consecutiveErrors).toBe(0);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('stop() prevents further iterations', async () => {
@@ -139,18 +139,18 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(100);
     expect(run).toHaveBeenCalledTimes(1);
 
-    await loop.stop();
+    await handle.stop();
 
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(run).toHaveBeenCalledTimes(1);
 
-    await startPromise;
+    await handle.promise;
   });
 
   it('tracks totalIterations correctly', async () => {
@@ -162,16 +162,16 @@ describe('loop', () => {
       getNextDelayMs: () => 300,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(10_000);
 
-    const metrics = loop.getMetrics();
+    const metrics = handle.getMetrics();
 
     expect(metrics.totalIterations).toBe(run.mock.calls.length);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('sets startedAt and stoppedAt correctly', async () => {
@@ -183,17 +183,17 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(100);
 
-    const startedAt = loop.getMetrics().startedAt;
+    const startedAt = handle.getMetrics().startedAt;
     expect(startedAt).not.toBeNull();
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
 
-    const stoppedAt = loop.getMetrics().stoppedAt;
+    const stoppedAt = handle.getMetrics().stoppedAt;
     expect(stoppedAt).not.toBeNull();
   });
 
@@ -206,19 +206,19 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(5_000);
 
-    const m1 = loop.getMetrics();
+    const m1 = handle.getMetrics();
     m1.failures = 999;
-    expect(loop.getMetrics().failures).not.toBe(999);
+    expect(handle.getMetrics().failures).not.toBe(999);
 
-    const m2 = loop.getMetrics();
+    const m2 = handle.getMetrics();
     expect(m1).not.toBe(m2);
 
-    await loop.stop();
-    await startPromise;
+    await handle.stop();
+    await handle.promise;
   });
 
   it('passes abort signal to run and aborts it on stop', async () => {
@@ -235,15 +235,15 @@ describe('loop', () => {
       getNextDelayMs: () => 1_000,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(100);
 
-    await loop.stop();
+    await handle.stop();
 
     expect(receivedSignal?.aborted).toBe(true);
 
-    await startPromise;
+    await handle.promise;
   });
 
   it('passes correct context to getNextDelayMs', async () => {
@@ -262,7 +262,7 @@ describe('loop', () => {
       getNextDelayMs,
     });
 
-    const startPromise = loop.start();
+    const handle = loop.start();
 
     await vi.advanceTimersByTimeAsync(100);
 
@@ -278,45 +278,7 @@ describe('loop', () => {
     expect(args2?.[0].consecutiveErrors).toBe(0);
     expect(args2?.[0].iteration).toBe(2);
 
-    await loop.stop();
-    await startPromise;
-  });
-
-  it('does not start twice', async () => {
-    const run = vi.fn(() => okAsync());
-
-    const loop = createLoop({
-      log: logger,
-      run,
-      getNextDelayMs: () => 1_000,
-    });
-
-    const p1 = loop.start();
-
-    await vi.advanceTimersByTimeAsync(100);
-
-    const startTime = loop.getMetrics().startedAt;
-
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    const p2 = loop.start();
-    expect(logger.warn).toHaveBeenCalledWith('[start] Already running');
-    expect(loop.getMetrics().startedAt).toBe(startTime);
-
-    await loop.stop();
-    await p1;
-    await p2;
-  });
-
-  it('stop() when not running does nothing', async () => {
-    const loop = createLoop({
-      log: logger,
-      run: () => okAsync(),
-      getNextDelayMs: () => 1000,
-    });
-
-    await loop.stop();
-
-    expect(logger.warn).toHaveBeenCalledWith('[stop] Not running');
+    await handle.stop();
+    await handle.promise;
   });
 });

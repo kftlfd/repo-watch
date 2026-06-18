@@ -3,8 +3,8 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { Cache } from '@/cache/cache.js';
 import type { RepositoryRepoConfig } from '@/config/config.js';
+import type { DB } from '@/db/client.js';
 import type { Logger } from '@/logger/logger.js';
-import { db } from '@/db/client.js';
 import { dbErrors } from '@/db/errors.js';
 import { repositories } from '@/db/schema.js';
 
@@ -14,12 +14,13 @@ export type NewRepository = typeof repositories.$inferInsert;
 export type RepositoryRepo = ReturnType<typeof createRepositoryRepo>;
 
 type Deps = {
+  db: DB;
   config: RepositoryRepoConfig;
   cache: Cache;
   logger: Logger;
 };
 
-export function createRepositoryRepo({ config, cache, logger }: Deps) {
+export function createRepositoryRepo({ db, config, cache, logger }: Deps) {
   const log = logger.child({ module: 'repository.repo' });
   const ENTITY = 'Repo';
 

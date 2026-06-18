@@ -1,16 +1,18 @@
 import type { Config } from '@/config/config.js';
+import type { Module } from '@/lib/runtime/runtime.js';
+import type { Logger } from '@/logger/logger.js';
 import { createRedisCache } from '@/cache/redisCache.js';
+import { createDBModule } from '@/db/client.js';
 import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
-import { createLogger } from '@/logger/logger.js';
 import { createConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import { createConfirmationEmailsWorker } from '@/queue/confirmation-emails/confirmation-emails.worker.js';
 import { createReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
 import { createReleaseNotificationsWorker } from '@/queue/release-notifications/release-notifications.worker.js';
 import { createRepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
-import { redis } from '@/redis/redis.js';
+import { createRedisModule } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
 import { createScannerLoop } from '@/scanner/scanner.loop.js';
 import { createFastifyServer } from '@/server/server.js';
@@ -21,9 +23,15 @@ import { createSubscriptionWeb } from '@/subscription/subscription.web.js';
 import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
 
-export function createApp(config: Config) {
+type Deps = {
+  config: Config;
+  logger: Logger;
+};
+
+export function createApp({ config, logger }: Deps) {
   // infra
-  const logger = createLogger();
+  const { dbModule, db } = createDBModule({ config: config.db, logger });
+  const { redisModule, redis } = createRedisModule();
   const cache = createRedisCache(redis);
 
   // clients
@@ -36,9 +44,9 @@ export function createApp(config: Config) {
   });
 
   // repos
-  const repositoryRepo = createRepositoryRepo({ config: config.repositoryRepo, logger, cache });
-  const subscriptionRepo = createSubscriptionRepo();
-  const tokenRepo = createTokenRepo();
+  const repositoryRepo = createRepositoryRepo({ config: config.repositoryRepo, db, logger, cache });
+  const subscriptionRepo = createSubscriptionRepo({ db });
+  const tokenRepo = createTokenRepo({ db });
 
   // queues
   const confirmationEmailsQueue = createConfirmationEmailsQueue({
@@ -74,7 +82,7 @@ export function createApp(config: Config) {
   });
 
   // queue workers
-  const createWorkers = () => [
+  const workers = [
     createConfirmationEmailsWorker({
       redis,
       config: config.queues.confirmationEmails.worker,
@@ -103,12 +111,14 @@ export function createApp(config: Config) {
   // server
   const subscriptionApi = createSubscriptionApi({ subscriptionService });
   const subscriptionWeb = createSubscriptionWeb({ subscriptionService });
-  const app = createFastifyServer({ logger, subscriptionApi, subscriptionWeb });
-
-  return {
+  const server = createFastifyServer({
+    config: config.server,
     logger,
-    app,
-    scannerLoop,
-    createWorkers,
-  };
+    subscriptionApi,
+    subscriptionWeb,
+  });
+
+  const modules: Module[] = [dbModule, redisModule, server, scannerLoop, ...workers];
+
+  return modules;
 }

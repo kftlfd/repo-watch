@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { seedRepository, seedSubscription } from '@/test/integration/seeds.js';
+import { db } from '@/test/integration/setup.js';
 
 import { createSubscriptionRepo } from './subscription.repo.js';
 
 describe('subscription.repo (integration)', () => {
   it('inserts a subscription into the database', async () => {
-    const repo = createSubscriptionRepo();
-    const repository = await seedRepository();
+    const repo = createSubscriptionRepo({ db });
+    const repository = await seedRepository(db);
 
     const created = await repo.create({
       email: 'user@example.com',
@@ -22,9 +23,9 @@ describe('subscription.repo (integration)', () => {
   });
 
   it('finds an active subscription by email and repository id', async () => {
-    const repo = createSubscriptionRepo();
-    const repository = await seedRepository();
-    const seeded = await seedSubscription({
+    const repo = createSubscriptionRepo({ db });
+    const repository = await seedRepository(db);
+    const seeded = await seedSubscription(db, {
       email: 'user@example.com',
       repositoryId: repository.id,
     });
@@ -36,9 +37,9 @@ describe('subscription.repo (integration)', () => {
   });
 
   it('updates subscription confirmation status', async () => {
-    const repo = createSubscriptionRepo();
-    const repository = await seedRepository();
-    const seeded = await seedSubscription({ repositoryId: repository.id });
+    const repo = createSubscriptionRepo({ db });
+    const repository = await seedRepository(db);
+    const seeded = await seedSubscription(db, { repositoryId: repository.id });
     const confirmedAt = new Date('2026-04-12T12:30:00.000Z');
 
     const updated = await repo.update(seeded.id, { confirmedAt, removedAt: null });
@@ -49,9 +50,9 @@ describe('subscription.repo (integration)', () => {
   });
 
   it('soft deletes subscriptions', async () => {
-    const repo = createSubscriptionRepo();
-    const repository = await seedRepository();
-    const seeded = await seedSubscription({ repositoryId: repository.id });
+    const repo = createSubscriptionRepo({ db });
+    const repository = await seedRepository(db);
+    const seeded = await seedSubscription(db, { repositoryId: repository.id });
 
     const deleted = await repo.softDelete(seeded.id);
     const found = await repo.findActiveByEmailAndRepoId(seeded.email, repository.id);
@@ -62,15 +63,15 @@ describe('subscription.repo (integration)', () => {
   });
 
   it('returns confirmed subscriptions in batches using the cursor', async () => {
-    const repo = createSubscriptionRepo();
-    const repository = await seedRepository();
-    await seedSubscription({ email: 'pending@example.com', repositoryId: repository.id });
-    const first = await seedSubscription({
+    const repo = createSubscriptionRepo({ db });
+    const repository = await seedRepository(db);
+    await seedSubscription(db, { email: 'pending@example.com', repositoryId: repository.id });
+    const first = await seedSubscription(db, {
       email: 'a@example.com',
       repositoryId: repository.id,
       confirmedAt: new Date('2026-04-12T10:00:00.000Z'),
     });
-    const second = await seedSubscription({
+    const second = await seedSubscription(db, {
       email: 'b@example.com',
       repositoryId: repository.id,
       confirmedAt: new Date('2026-04-12T11:00:00.000Z'),
@@ -85,14 +86,14 @@ describe('subscription.repo (integration)', () => {
   });
 
   it('returns active subscriptions for an email joined with repository data', async () => {
-    const repo = createSubscriptionRepo();
-    const repository = await seedRepository({ fullName: 'owner/repo', lastSeenTag: 'v2.0.0' });
-    await seedSubscription({
+    const repo = createSubscriptionRepo({ db });
+    const repository = await seedRepository(db, { fullName: 'owner/repo', lastSeenTag: 'v2.0.0' });
+    await seedSubscription(db, {
       email: 'user@example.com',
       repositoryId: repository.id,
       confirmedAt: new Date('2026-04-12T09:00:00.000Z'),
     });
-    await seedSubscription({
+    await seedSubscription(db, {
       email: 'user@example.com',
       repositoryId: repository.id,
       removedAt: new Date('2026-04-12T10:00:00.000Z'),

@@ -1,15 +1,20 @@
+import type { Pool } from 'pg';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeEach } from 'vitest';
+import { afterAll, beforeAll, beforeEach } from 'vitest';
 
+import type { DB } from '@/db/client.js';
+import { env } from '@/config/env.js';
+import { createDb, createPool } from '@/db/client.js';
 import { tableNames } from '@/db/schema.js';
 
-async function initTestDB() {
-  const { db } = await import('@/db/client.js');
+export let db: DB;
+let pool: Pool;
 
-  const tables = Object.values(tableNames)
-    .map((t) => `"${t}"`)
-    .join(', ');
+const tables = Object.values(tableNames)
+  .map((t) => `"${t}"`)
+  .join(', ');
 
+async function resetDB(db: DB) {
   await db.execute(
     sql.raw(`
     TRUNCATE TABLE ${tables}
@@ -18,16 +23,15 @@ async function initTestDB() {
   );
 }
 
-async function closeTestDB() {
-  const { closeDB } = await import('@/db/client.js');
-
-  await closeDB();
-}
+beforeAll(() => {
+  pool = createPool(env.DATABASE_URL);
+  db = createDb(pool);
+});
 
 beforeEach(async () => {
-  await initTestDB();
+  await resetDB(db);
 });
 
 afterAll(async () => {
-  await closeTestDB();
+  await pool.end();
 });

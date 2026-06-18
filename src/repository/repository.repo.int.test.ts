@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { db } from '@/test/integration/setup.js';
 import { createMockCache, createMockLogger } from '@/test/mocks.js';
 import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 
@@ -11,6 +12,7 @@ function createTestRepo() {
 
   return {
     repo: createRepositoryRepo({
+      db: db,
       config: { tagCacheTtlSeconds: 60 },
       cache: createMockCache({ get, set }),
       logger: createMockLogger(),

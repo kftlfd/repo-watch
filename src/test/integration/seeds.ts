@@ -1,7 +1,10 @@
-import { db } from '@/db/client.js';
+import type { DB } from '@/db/client.js';
 import { repositories, subscriptions, tokens } from '@/db/schema.js';
 
-export async function seedRepository(overrides: Partial<typeof repositories.$inferInsert> = {}) {
+export async function seedRepository(
+  db: DB,
+  overrides: Partial<typeof repositories.$inferInsert> = {},
+) {
   const [row] = await db
     .insert(repositories)
     .values({
@@ -20,7 +23,10 @@ export async function seedRepository(overrides: Partial<typeof repositories.$inf
   return row;
 }
 
-export async function seedSubscription(overrides: Partial<typeof subscriptions.$inferInsert> = {}) {
+export async function seedSubscription(
+  db: DB,
+  overrides: Partial<typeof subscriptions.$inferInsert> = {},
+) {
   const [row] = await db
     .insert(subscriptions)
     .values({
@@ -37,7 +43,7 @@ export async function seedSubscription(overrides: Partial<typeof subscriptions.$
   return row;
 }
 
-export async function seedToken(overrides: Partial<typeof tokens.$inferInsert> = {}) {
+export async function seedToken(db: DB, overrides: Partial<typeof tokens.$inferInsert> = {}) {
   const [row] = await db
     .insert(tokens)
     .values({

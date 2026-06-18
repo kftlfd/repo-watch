@@ -1,11 +1,18 @@
 import { env } from './env.js';
 
-export type MigrationConfig = {
-  maxAttempts: number;
-  retryDelayMs: number;
+type RuntimeConfig = {
+  shutdownTimeoutMs: number;
 };
 
-type ServerConfig = {
+export type DBConfig = {
+  url: string;
+  migrations: {
+    maxAttempts: number;
+    retryDelayMs: number;
+  };
+};
+
+export type ServerConfig = {
   host: string;
   port: number;
 };
@@ -59,7 +66,7 @@ export type WorkerConfig = {
   limiterDuration: number;
 };
 
-export function workerConf(overrides?: Partial<WorkerConfig>): WorkerConfig {
+function workerConf(overrides?: Partial<WorkerConfig>): WorkerConfig {
   return {
     concurrency: 1,
     limiterMax: 1,
@@ -83,7 +90,8 @@ export type RepoSubJobConfig = {
 };
 
 export type Config = {
-  migrations: MigrationConfig;
+  runtime: RuntimeConfig;
+  db: DBConfig;
   server: ServerConfig;
   githubClient: GithubClientConfig;
   repositoryRepo: RepositoryRepoConfig;
@@ -98,10 +106,16 @@ export type Config = {
 
 const hasGithubToken = !!env.GITHUB_TOKEN;
 
-export const config: Config = {
-  migrations: {
-    maxAttempts: 5,
-    retryDelayMs: 2_000,
+const defaultConfig: Config = {
+  runtime: {
+    shutdownTimeoutMs: 10_000,
+  },
+  db: {
+    url: env.DATABASE_URL,
+    migrations: {
+      maxAttempts: 5,
+      retryDelayMs: 2_000,
+    },
   },
   server: {
     host: env.HOST ?? (env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0'),
@@ -145,3 +159,13 @@ export const config: Config = {
     },
   },
 };
+
+export function createConfig(conf?: Config | ((defaultConfig: Config) => Config)) {
+  if (!conf) {
+    return defaultConfig;
+  }
+  if (typeof conf === 'function') {
+    return conf(defaultConfig);
+  }
+  return conf;
+}

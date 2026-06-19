@@ -14,6 +14,8 @@ import type { Logger } from '@/logger/logger.js';
 import type { MetricsRegistry, ServerMetrics } from '@/metrics/metrics.js';
 import { defineModule } from '@/lib/runtime/runtime.js';
 
+const requestTimer = Symbol('request-timer');
+
 type Deps = {
   config: ServerConfig;
   logger: Logger;
@@ -35,7 +37,24 @@ export function createFastifyServer({
     loggerInstance: logger,
   });
 
-  app.register(metrics.trackRequestMetrics);
+  app.addHook('onRequest', (req, reply, done) => {
+    (req as typeof req & { [requestTimer]: () => number })[requestTimer] =
+      metrics.requestsDuration.startTimer({
+        method: req.method,
+        path: req.routeOptions.url,
+      });
+    done();
+  });
+
+  app.addHook('onResponse', (req, reply, done) => {
+    (req as typeof req & { [requestTimer]: () => number })[requestTimer]();
+    metrics.requestsTotal.inc({
+      method: req.method,
+      path: req.routeOptions.url,
+      status: reply.statusCode,
+    });
+    done();
+  });
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);

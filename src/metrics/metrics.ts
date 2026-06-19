@@ -1,4 +1,3 @@
-import type { FastifyPluginCallback } from 'fastify';
 import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
 
 export type MetricsRegistry = Registry;
@@ -34,25 +33,9 @@ function createServerMetrics(registry: MetricsRegistry) {
     registers: [registry],
   });
 
-  const trackRequestMetrics: FastifyPluginCallback = (app) => {
-    const requestTimer = Symbol('request-timer');
-
-    app.addHook('onRequest', (req) => {
-      (req as typeof req & { [requestTimer]: () => number })[requestTimer] =
-        requestsDuration.startTimer({
-          method: req.method,
-          path: req.url,
-        });
-    });
-
-    app.addHook('onResponse', (req, reply) => {
-      (req as typeof req & { [requestTimer]: () => number })[requestTimer]();
-      requestsTotal.inc({ method: req.method, path: req.url, status: reply.statusCode });
-    });
-  };
-
   return {
-    trackRequestMetrics,
+    requestsTotal,
+    requestsDuration,
   };
 }
 

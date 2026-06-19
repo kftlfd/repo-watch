@@ -11,19 +11,31 @@ import {
 
 import type { ServerConfig } from '@/config/config.js';
 import type { Logger } from '@/logger/logger.js';
+import type { MetricsRegistry, ServerMetrics } from '@/metrics/metrics.js';
 import { defineModule } from '@/lib/runtime/runtime.js';
 
 type Deps = {
   config: ServerConfig;
   logger: Logger;
+  metrics: ServerMetrics;
+  metricsRegistry: MetricsRegistry;
   subscriptionApi: FastifyPluginCallback;
   subscriptionWeb: FastifyPluginCallback;
 };
 
-export function createFastifyServer({ config, logger, subscriptionApi, subscriptionWeb }: Deps) {
+export function createFastifyServer({
+  config,
+  logger,
+  metrics,
+  metricsRegistry,
+  subscriptionApi,
+  subscriptionWeb,
+}: Deps) {
   const app = Fastify({
     loggerInstance: logger,
   });
+
+  app.register(metrics.trackRequestMetrics);
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -47,6 +59,11 @@ export function createFastifyServer({ config, logger, subscriptionApi, subscript
       hideClientButton: true,
       defaultOpenAllTags: true,
     },
+  });
+
+  app.get('/metrics', (_, reply) => {
+    reply.header('content-type', metricsRegistry.contentType);
+    return metricsRegistry.metrics();
   });
 
   app.register(formbody);

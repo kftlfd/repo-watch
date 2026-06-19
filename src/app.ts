@@ -5,6 +5,7 @@ import { createDBModule } from '@/db/client.js';
 import { createEmailService } from '@/email/email.service.js';
 import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
+import { createMetrics } from '@/metrics/metrics.js';
 import { createConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import { createConfirmationEmailsWorker } from '@/queue/confirmation-emails/confirmation-emails.worker.js';
 import { createReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
@@ -28,6 +29,8 @@ type Deps = {
 };
 
 export function createApp({ config, logger }: Deps) {
+  const metrics = createMetrics();
+
   // infra
   const { dbModule, db } = createDBModule({ config: config.db, logger });
   const { redisModule, redis } = createRedisModule();
@@ -113,6 +116,8 @@ export function createApp({ config, logger }: Deps) {
   const server = createFastifyServer({
     config: config.server,
     logger,
+    metrics: metrics.server,
+    metricsRegistry: metrics.registry,
     subscriptionApi,
     subscriptionWeb,
   });

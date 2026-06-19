@@ -62,18 +62,19 @@
 
 # Prometheus `/metrics`
 
-- [ ] configure `prom-client`
-  - [ ] `src/metrics/metrics.ts`
+- [x] configure `prom-client`
+  - [x] `src/metrics/metrics.ts`
     - initialize registry
     - define metrics (Counter and Histogram)
     - export register to endpoint
-  - [ ] `src/server/server.ts`
+  - [x] `src/server/server.ts`
     - add `/metrics` endpoint
-    - protected with API key auth
     - Prometheus text format: Return `register.metrics()` with proper content-type
 
+- [ ] protect `/metrics` with API key auth
+
 - [ ] gather metrics
-  - [ ] server
+  - [x] server
     - request count and duration (with Fastify hooks `onRequest`, `onResponse`)
     - `http_requests_total` - Counter with labels: method, route, status_code
     - `http_request_duration_seconds` - Histogram with labels: method, route

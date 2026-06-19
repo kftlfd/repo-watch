@@ -14,5 +14,8 @@ export function createLogger(): Logger {
             options: { colorize: true } satisfies PrettyOptions,
           }
         : undefined,
+    serializers: {
+      error: pino.stdSerializers.err,
+    },
   });
 }

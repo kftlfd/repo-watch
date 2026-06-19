@@ -2,12 +2,11 @@ import { Job, Worker } from 'bullmq';
 
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { TokenService } from '@/token/token.service.js';
-import { newPromise } from '@/utils/promises.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 
 import type { ReleaseEmailJob } from './release-notifications.types.js';
 import { QUEUE_NAME_RELEASE_NOTIFICATIONS } from './release-notifications.types.js';
@@ -108,24 +107,18 @@ export function createReleaseNotificationsWorker({
     tokenService,
   });
 
-  const module: Module = {
-    name: moduleName,
+  let emailWorker: Worker<ReleaseEmailJob>;
 
-    start() {
-      const emailWorker = new Worker<ReleaseEmailJob>(
-        QUEUE_NAME_RELEASE_NOTIFICATIONS,
-        processJob,
-        {
-          connection: redis,
-          concurrency: config.concurrency,
-          limiter: {
-            max: config.limiterMax,
-            duration: config.limiterDuration,
-          },
+  return defineModule(moduleName, {
+    start({ fail }) {
+      emailWorker = new Worker<ReleaseEmailJob>(QUEUE_NAME_RELEASE_NOTIFICATIONS, processJob, {
+        connection: redis,
+        concurrency: config.concurrency,
+        limiter: {
+          max: config.limiterMax,
+          duration: config.limiterDuration,
         },
-      );
-
-      const promise = newPromise();
+      });
 
       emailWorker.on('failed', (job, error) => {
         const jobId = job?.id ?? 'unknown';
@@ -134,19 +127,14 @@ export function createReleaseNotificationsWorker({
 
       emailWorker.on('error', (error) => {
         log.error({ error }, 'Worker error, force-closing');
-        promise.reject(error);
+        fail(error);
       });
 
       log.info('Release-notifications worker started');
-
-      return Promise.resolve({
-        exited: promise.promise,
-        stop() {
-          return emailWorker.close(true);
-        },
-      });
     },
-  };
 
-  return module;
+    async stop() {
+      await emailWorker.close();
+    },
+  });
 }

@@ -59,14 +59,24 @@ export function defineModule(name: string, opts: DefineModuleOptions) {
         exited: exited.promise,
 
         async stop() {
+          const errors: unknown[] = [];
+
           try {
             await opts.stop?.();
-            exited.resolve();
           } catch (err) {
-            exited.reject(err);
+            errors.push(err);
           }
 
-          return exited.promise;
+          exited.resolve();
+          try {
+            await exited.promise;
+          } catch (err) {
+            errors.push(err);
+          }
+
+          if (errors.length > 0) {
+            throw new AggregateError(errors, `module stop: ${name}`);
+          }
         },
       };
     },
@@ -162,7 +172,7 @@ export function createRuntime({
     }
 
     if (errors.length > 0) {
-      throw new AggregateError(errors, 'runtime stop error');
+      throw new AggregateError(errors, 'runtime stop errors');
     }
   }
 
@@ -183,9 +193,12 @@ export function createRuntime({
 
     const m = await waitForExit();
     if (m.status === 'finished') {
-      shutdown(`module exited: ${m.name}`, new Error('module exited unexpectedly'));
+      shutdown(`module exited: ${m.name}`, new Error(`module exited unexpectedly: ${m.name}`));
     } else {
-      shutdown(`module failed: ${m.name}`, new Error('module failed', { cause: m.error }));
+      shutdown(
+        `module failed: ${m.name}`,
+        new Error(`module failed: ${m.name}`, { cause: m.error }),
+      );
     }
 
     return shutdownPromise.promise;
@@ -198,20 +211,21 @@ export function createRuntime({
     if (isShuttingDown) return;
 
     isShuttingDown = true;
-    logger.info({ reason }, 'Shutting down');
+    if (err) {
+      logger.error({ reason, error: err }, 'Shutting down because of error');
+    } else {
+      logger.info({ reason }, 'Shutting down');
+    }
 
-    const timeoutError = err
-      ? new Error('shutdown timeout', { cause: err })
-      : new Error('shutdown timeout');
+    const timeoutError = new Error('shutdown timeout');
 
     withTimeout(stop(), config.shutdownTimeoutMs, timeoutError)
       .then(() => {
-        if (err) shutdownPromise.reject(err);
+        if (err) shutdownPromise.reject(shutdownError([], err));
         else shutdownPromise.resolve();
       })
       .catch((shutdownErr: unknown) => {
-        if (err) shutdownPromise.reject(new AggregateError([err, shutdownErr]));
-        else shutdownPromise.reject(shutdownErr);
+        shutdownPromise.reject(shutdownError([shutdownErr], err));
       })
       .finally(() => {
         runtimeStatus.setState('stopped');
@@ -219,4 +233,8 @@ export function createRuntime({
   }
 
   return { run, shutdown };
+}
+
+function shutdownError(errs: unknown[], cause?: unknown) {
+  return new AggregateError(errs, 'shutdown error', { cause });
 }

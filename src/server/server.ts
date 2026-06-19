@@ -10,9 +10,8 @@ import {
 } from 'fastify-type-provider-zod';
 
 import type { ServerConfig } from '@/config/config.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
-import { newPromise } from '@/utils/promises.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 
 type Deps = {
   config: ServerConfig;
@@ -55,19 +54,13 @@ export function createFastifyServer({ config, logger, subscriptionApi, subscript
   app.register(subscriptionApi, { prefix: '/api' });
   app.register(subscriptionWeb);
 
-  const module: Module = {
-    name: 'fastify-server',
+  return defineModule('fastify-server', {
     async start() {
       await app.listen({ host: config.host, port: config.port });
       await app.ready();
-      return {
-        exited: newPromise().promise,
-        async stop() {
-          await app.close();
-        },
-      };
     },
-  };
-
-  return module;
+    async stop() {
+      await app.close();
+    },
+  });
 }

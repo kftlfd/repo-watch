@@ -2,11 +2,11 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import { createLoop } from '@/lib/loop/loop.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 import { sleep } from '@/utils/sleep.js';
 
 export function createFetchWithRetryFn({
@@ -238,16 +238,17 @@ export function createScannerLoop({
     },
   });
 
-  const module: Module = {
-    name: 'scanner-loop',
-    start() {
-      const hanlde = loop.start();
-      return Promise.resolve({
-        exited: hanlde.promise,
-        stop: hanlde.stop,
-      });
+  let handle: ReturnType<typeof loop.start>;
+
+  const module = defineModule('scanner-loop', {
+    start({ watch }) {
+      handle = loop.start();
+      watch(handle.promise);
     },
-  };
+    async stop() {
+      await handle.stop();
+    },
+  });
 
   return module;
 }

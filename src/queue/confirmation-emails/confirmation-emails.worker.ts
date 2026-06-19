@@ -2,10 +2,9 @@ import { Job, Worker } from 'bullmq';
 
 import type { WorkerConfig } from '@/config/config.js';
 import type { EmailService } from '@/email/email.service.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { Redis } from '@/redis/redis.js';
-import { newPromise } from '@/utils/promises.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 
 import type { ConfirmationEmailJob } from './confirmation-emails.types.js';
 import { QUEUE_NAME_CONFIRMATION_EMAILS } from './confirmation-emails.types.js';
@@ -60,11 +59,11 @@ export function createConfirmationEmailsWorker({ config, logger, emailService, r
 
   const processJob = createProcessConfirmationEmailJob({ log, emailService });
 
-  const module: Module = {
-    name: moduleName,
+  let worker: Worker<ConfirmationEmailJob>;
 
-    start() {
-      const worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
+  return defineModule(moduleName, {
+    start({ fail }) {
+      worker = new Worker<ConfirmationEmailJob>(QUEUE_NAME_CONFIRMATION_EMAILS, processJob, {
         connection: redis,
         concurrency: config.concurrency,
         limiter: {
@@ -73,8 +72,6 @@ export function createConfirmationEmailsWorker({ config, logger, emailService, r
         },
       });
 
-      const promise = newPromise();
-
       worker.on('failed', (job, error) => {
         const jobId = job?.id ?? 'unknown';
         log.error({ error }, `Job ${jobId} failed`);
@@ -82,19 +79,14 @@ export function createConfirmationEmailsWorker({ config, logger, emailService, r
 
       worker.on('error', (error) => {
         log.error({ error }, 'Worker error, force-closing');
-        promise.reject(error);
+        fail(error);
       });
 
       log.info('Confirmation-emails worker started');
-
-      return Promise.resolve({
-        exited: promise.promise,
-        stop() {
-          return worker.close(true);
-        },
-      });
     },
-  };
 
-  return module;
+    async stop() {
+      return worker.close(true);
+    },
+  });
 }

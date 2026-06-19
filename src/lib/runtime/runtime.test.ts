@@ -1,35 +1,119 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { RuntimeConfig } from '@/config/config.js';
 import type { MockLogger } from '@/test/mocks.js';
 import { createMockLogger } from '@/test/mocks.js';
 import { newPromise } from '@/utils/promises.js';
 
-import type { LifecycleHandle, Module } from './runtime.js';
-import { createRuntime, createRuntimeStatus, createShutdownController } from './runtime.js';
+import { createRuntime, createRuntimeStatus, defineModule } from './runtime.js';
 
-function createModule(
-  name: string,
-  options?: {
-    onStart?: () => Promise<void> | void;
-    onStop?: () => Promise<void> | void;
-    exited?: Promise<void>;
-  },
-): Module {
+function createConfig(timeout = 1000): RuntimeConfig {
   return {
-    name,
-
-    async start(): Promise<LifecycleHandle> {
-      await options?.onStart?.();
-
-      return {
-        exited: options?.exited ?? newPromise().promise,
-        async stop() {
-          await options?.onStop?.();
-        },
-      };
-    },
+    shutdownTimeoutMs: timeout,
   };
 }
+
+describe('defineModule', () => {
+  it('calls start callback', async () => {
+    const start = vi.fn();
+
+    const module = defineModule('test', { start });
+
+    await module.start();
+
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls stop callback', async () => {
+    const stop = vi.fn();
+
+    const module = defineModule('test', { stop });
+
+    const handle = await module.start();
+
+    await handle.stop();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('exits when exit() is called', async () => {
+    let exit!: () => void;
+
+    const module = defineModule('test', {
+      start(args) {
+        exit = args.exit;
+      },
+    });
+
+    const handle = await module.start();
+
+    exit();
+
+    await expect(handle.exited).resolves.toBeUndefined();
+  });
+
+  it('fails when fail() is called', async () => {
+    let fail!: (error: unknown) => void;
+
+    const module = defineModule('test', {
+      start(args) {
+        fail = args.fail;
+      },
+    });
+
+    const handle = await module.start();
+
+    const error = new Error('boom');
+
+    fail(error);
+
+    await expect(handle.exited).rejects.toBe(error);
+  });
+
+  it('watches promise resolution', async () => {
+    const task = newPromise();
+
+    const module = defineModule('test', {
+      start({ watch }) {
+        watch(task.promise);
+      },
+    });
+
+    const handle = await module.start();
+
+    task.resolve();
+
+    await expect(handle.exited).resolves.toBeUndefined();
+  });
+
+  it('watches promise rejection', async () => {
+    const task = newPromise();
+
+    const module = defineModule('test', {
+      start({ watch }) {
+        watch(task.promise);
+      },
+    });
+
+    const handle = await module.start();
+
+    const error = new Error('boom');
+
+    task.reject(error);
+
+    await expect(handle.exited).rejects.toBe(error);
+  });
+
+  it('stop resolves exited before returning', async () => {
+    const module = defineModule('test', {});
+
+    const handle = await module.start();
+
+    await handle.stop();
+
+    await expect(handle.exited).resolves.toBeUndefined();
+  });
+});
 
 describe('createRuntime', () => {
   let logger: MockLogger;
@@ -40,301 +124,244 @@ describe('createRuntime', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('rejects when no modules are provided', async () => {
+    const { controller } = createRuntimeStatus();
+
+    const runtime = createRuntime({
+      config: createConfig(),
+      logger,
+      modules: [],
+      runtimeStatus: controller,
+    });
+
+    await expect(runtime.run()).rejects.toThrow('no modules to run');
   });
 
   it('starts modules in order', async () => {
-    const calls: string[] = [];
+    const started: string[] = [];
 
     const runtime = createRuntime({
+      config: createConfig(),
       logger,
-      runtimeStatus: createRuntimeStatus(),
+      runtimeStatus: createRuntimeStatus().controller,
       modules: [
-        createModule('a', {
-          onStart: () => {
-            calls.push('a');
+        defineModule('a', {
+          start() {
+            started.push('a');
           },
         }),
-        createModule('b', {
-          onStart: () => {
-            calls.push('b');
-          },
-        }),
-        createModule('c', {
-          onStart: () => {
-            calls.push('c');
+        defineModule('b', {
+          start() {
+            started.push('b');
           },
         }),
       ],
     });
 
-    await runtime.start();
+    runtime.shutdown('test');
 
-    expect(calls).toEqual(['a', 'b', 'c']);
+    await runtime.run().catch(() => {});
+
+    expect(started).toEqual(['a', 'b']);
   });
 
   it('stops modules in reverse order', async () => {
-    const calls: string[] = [];
+    const stopped: string[] = [];
 
     const runtime = createRuntime({
+      config: createConfig(),
       logger,
-      runtimeStatus: createRuntimeStatus(),
+      runtimeStatus: createRuntimeStatus().controller,
       modules: [
-        createModule('a', {
-          onStop: () => {
-            calls.push('a');
+        defineModule('a', {
+          stop() {
+            stopped.push('a');
           },
         }),
-        createModule('b', {
-          onStop: () => {
-            calls.push('b');
-          },
-        }),
-        createModule('c', {
-          onStop: () => {
-            calls.push('c');
+        defineModule('b', {
+          stop() {
+            stopped.push('b');
           },
         }),
       ],
     });
 
-    await runtime.start();
-    await runtime.stop();
+    const runPromise = runtime.run();
 
-    expect(calls).toEqual(['c', 'b', 'a']);
+    runtime.shutdown('test');
+
+    await runPromise;
+
+    expect(stopped).toEqual(['b', 'a']);
   });
 
-  it('stops partially-started modules in reverse order when startup fails', async () => {
-    const stops: string[] = [];
+  it('stops already-started modules when startup fails', async () => {
+    const stopped: string[] = [];
 
     const runtime = createRuntime({
+      config: createConfig(),
       logger,
-      runtimeStatus: createRuntimeStatus(),
+      runtimeStatus: createRuntimeStatus().controller,
       modules: [
-        createModule('a', {
-          onStop: () => {
-            stops.push('a');
+        defineModule('a', {
+          stop() {
+            stopped.push('a');
           },
         }),
-        createModule('b', {
-          onStop: () => {
-            stops.push('b');
-          },
-        }),
-        createModule('c', {
-          onStart: () => {
+        defineModule('b', {
+          start() {
             throw new Error('startup failed');
           },
         }),
       ],
     });
 
-    await expect(runtime.start()).rejects.toThrow(Error);
+    await expect(runtime.run()).rejects.toThrow(Error);
 
-    await runtime.stop();
-
-    expect(stops).toEqual(['b', 'a']);
+    expect(stopped).toEqual(['a']);
   });
 
-  it('waitForExit returns first finished module', async () => {
-    const a = newPromise();
-    const b = newPromise();
+  it('stops partially-started modules in reverse order when startup fails', async () => {
+    const stopped: string[] = [];
 
     const runtime = createRuntime({
+      config: createConfig(),
       logger,
-      runtimeStatus: createRuntimeStatus(),
+      runtimeStatus: createRuntimeStatus().controller,
       modules: [
-        createModule('a', {
-          exited: a.promise,
+        defineModule('a', {
+          stop() {
+            stopped.push('a');
+          },
         }),
-        createModule('b', {
-          exited: b.promise,
+        defineModule('b', {
+          stop() {
+            stopped.push('b');
+          },
+        }),
+        defineModule('c', {
+          start() {
+            throw new Error('startup failed');
+          },
         }),
       ],
     });
 
-    await runtime.start();
+    await expect(runtime.run()).rejects.toThrow(Error);
 
-    b.resolve();
-
-    await expect(runtime.waitForExit()).resolves.toEqual({
-      name: 'b',
-      status: 'finished',
-    });
+    expect(stopped).toEqual(['b', 'a']);
   });
 
-  it('waitForExit returns first failed module', async () => {
-    const a = newPromise();
-    const b = newPromise();
-
-    const error = new Error('boom');
+  it('rejects when module exits unexpectedly', async () => {
+    let exit!: () => void;
 
     const runtime = createRuntime({
+      config: createConfig(),
       logger,
-      runtimeStatus: createRuntimeStatus(),
+      runtimeStatus: createRuntimeStatus().controller,
       modules: [
-        createModule('a', {
-          exited: a.promise,
-        }),
-        createModule('b', {
-          exited: b.promise,
+        defineModule('worker', {
+          start(args) {
+            exit = args.exit;
+          },
         }),
       ],
     });
 
-    await runtime.start();
+    const runPromise = runtime.run();
 
-    b.reject(error);
+    exit();
 
-    await expect(runtime.waitForExit()).resolves.toEqual({
-      name: 'b',
-      status: 'failed',
-      error,
+    await expect(runPromise).rejects.toThrow(Error);
+  });
+
+  it('rejects when module fails', async () => {
+    let fail!: (error: unknown) => void;
+
+    const runtime = createRuntime({
+      config: createConfig(),
+      logger,
+      runtimeStatus: createRuntimeStatus().controller,
+      modules: [
+        defineModule('worker', {
+          start(args) {
+            fail = args.fail;
+          },
+        }),
+      ],
     });
+
+    const runPromise = runtime.run();
+
+    fail(new Error('boom'));
+
+    await expect(runPromise).rejects.toThrow(Error);
   });
 
   it('aggregates stop errors', async () => {
-    const errA = new Error('a');
-    const errB = new Error('b');
-
     const runtime = createRuntime({
+      config: createConfig(),
       logger,
-      runtimeStatus: createRuntimeStatus(),
+      runtimeStatus: createRuntimeStatus().controller,
       modules: [
-        createModule('a', {
-          onStop: () => {
-            throw errA;
+        defineModule('a', {
+          stop() {
+            throw new Error('a');
           },
         }),
-        createModule('b', {
-          onStop: () => {
-            throw errB;
+        defineModule('b', {
+          stop() {
+            throw new Error('b');
           },
         }),
       ],
     });
 
-    await runtime.start();
+    const runPromise = runtime.run();
 
-    await expect(runtime.stop()).rejects.toThrow(AggregateError);
+    runtime.shutdown('test');
 
-    try {
-      await runtime.stop();
-    } catch (error) {
-      expect(error).toBeInstanceOf(AggregateError);
-
-      const aggregate = error as AggregateError;
-
-      expect(aggregate.errors).toEqual([errB, errA]);
-    }
+    await expect(runPromise).rejects.toThrow(AggregateError);
   });
 
-  it('updates runtime state', async () => {
-    const status = createRuntimeStatus();
+  it('can shutdown while startup is still in progress', async () => {
+    vi.useFakeTimers();
+    const startup = newPromise();
+    let fastStopped = false;
 
     const runtime = createRuntime({
+      config: createConfig(10_000),
       logger,
-      runtimeStatus: status,
-      modules: [createModule('a')],
+      runtimeStatus: createRuntimeStatus().controller,
+      modules: [
+        defineModule('fast', {
+          stop() {
+            fastStopped = true;
+          },
+        }),
+        defineModule('slow', {
+          async start() {
+            await startup.promise;
+          },
+        }),
+      ],
     });
 
-    expect(status.getState()).toBe('starting');
+    const runPromise = runtime.run();
 
-    await runtime.start();
-
-    expect(status.getState()).toBe('running');
-
-    await runtime.stop();
-
-    expect(status.getState()).toBe('shutting-down');
-  });
-});
-
-describe('createShutdownController', () => {
-  let logger: MockLogger;
-
-  beforeEach(() => {
-    logger = createMockLogger();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('runs shutdown only once', async () => {
-    const shutdown = vi.fn().mockResolvedValue(undefined);
-
-    const controller = createShutdownController({
-      logger,
-      shutdown,
-      timeoutMs: 1000,
-    });
-
-    controller.trigger('first');
-    controller.trigger('second');
-    controller.trigger('third');
-
-    await controller.done;
-
-    expect(shutdown).toHaveBeenCalledTimes(1);
-  });
-
-  it('resolves done after successful shutdown', async () => {
-    const controller = createShutdownController({
-      logger,
-      shutdown: vi.fn().mockResolvedValue(undefined),
-      timeoutMs: 1000,
-    });
-
-    controller.trigger('sigterm');
-
-    await expect(controller.done).resolves.toBeUndefined();
-  });
-
-  it('rejects done with provided error', async () => {
-    const error = new Error('failure');
-
-    const controller = createShutdownController({
-      logger,
-      shutdown: vi.fn().mockResolvedValue(undefined),
-      timeoutMs: 1000,
-    });
-
-    controller.trigger('failure', error);
-
-    await expect(controller.done).rejects.toBe(error);
-  });
-
-  it('rejects when shutdown fails', async () => {
-    const error = new Error('shutdown failed');
-
-    const controller = createShutdownController({
-      logger,
-      shutdown: vi.fn().mockRejectedValue(error),
-      timeoutMs: 1000,
-    });
-
-    controller.trigger('failure');
-
-    await expect(controller.done).rejects.toBe(error);
-  });
-
-  it('rejects on shutdown timeout', async () => {
-    vi.useFakeTimers();
-
-    const controller = createShutdownController({
-      logger,
-      shutdown: () => new Promise(() => {}),
-      timeoutMs: 1000,
-    });
-
-    controller.trigger('timeout');
-
-    const expErr = expect(controller.done).rejects.toThrow(Error);
+    runtime.shutdown('SIGTERM');
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    await expErr;
+    expect(fastStopped).toBe(false);
 
-    vi.useRealTimers();
+    startup.resolve();
+
+    await runPromise;
+
+    expect(fastStopped).toBe(true);
   });
 });

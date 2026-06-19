@@ -1,5 +1,4 @@
 import type { Config } from '@/config/config.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import { createRedisCache } from '@/cache/redisCache.js';
 import { createDBModule } from '@/db/client.js';
@@ -118,7 +117,5 @@ export function createApp({ config, logger }: Deps) {
     subscriptionWeb,
   });
 
-  const modules: Module[] = [dbModule, redisModule, server, scannerLoop, ...workers];
-
-  return modules;
+  return [dbModule, redisModule, server, scannerLoop, ...workers];
 }

@@ -1,6 +1,6 @@
 import { env } from './env.js';
 
-type RuntimeConfig = {
+export type RuntimeConfig = {
   shutdownTimeoutMs: number;
 };
 

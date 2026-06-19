@@ -1,13 +1,12 @@
 import { Job, Worker } from 'bullmq';
 
 import type { RepoSubJobConfig, WorkerConfig } from '@/config/config.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { ReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
 import type { Redis } from '@/redis/redis.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type { SubscriptionRepo } from '@/subscription/subscription.repo.js';
-import { newPromise } from '@/utils/promises.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 import { sleep } from '@/utils/sleep.js';
 
 import type { RepoSubscriptionsJob } from './repo-subscriptions.types.js';
@@ -119,11 +118,11 @@ export function createRepoSubscriptionsWorker({
     releaseNotificationsQueue,
   });
 
-  const module: Module = {
-    name: moduleName,
+  let worker: Worker<RepoSubscriptionsJob>;
 
-    start() {
-      const worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
+  return defineModule(moduleName, {
+    start({ fail }) {
+      worker = new Worker<RepoSubscriptionsJob>(QUEUE_NAME_REPO_SUBSCRIPTIONS, processJob, {
         connection: redis,
         concurrency: config.concurrency,
         limiter: {
@@ -132,8 +131,6 @@ export function createRepoSubscriptionsWorker({
         },
       });
 
-      const promise = newPromise();
-
       worker.on('failed', (job, error) => {
         const jobId = job?.id ?? 'unknown';
         log.error({ error }, `Job ${jobId} failed`);
@@ -141,19 +138,14 @@ export function createRepoSubscriptionsWorker({
 
       worker.on('error', (error) => {
         log.error({ error }, 'Worker error, force-closing');
-        promise.reject(error);
+        fail(error);
       });
 
       log.info('Repo-subsciptions worker started');
-
-      return Promise.resolve({
-        exited: promise.promise,
-        stop() {
-          return worker.close(true);
-        },
-      });
     },
-  };
 
-  return module;
+    async stop() {
+      await worker.close();
+    },
+  });
 }

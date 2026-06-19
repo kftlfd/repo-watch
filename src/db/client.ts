@@ -4,9 +4,8 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 
 import type { DBConfig } from '@/config/config.js';
-import type { Module } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
-import { newPromise } from '@/utils/promises.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 import { sleep } from '@/utils/sleep.js';
 
 import * as schema from './schema.js';
@@ -70,19 +69,15 @@ export function createDBModule({ config, logger }: { config: DBConfig; logger: L
   const pool = createPool(config.url);
   const db = createDb(pool);
 
-  const dbModule: Module = {
-    name: 'db',
+  const dbModule = defineModule('db', {
     async start() {
       await applyDBMigrations(db, config.migrations, logger);
       await db.execute('SELECT 1;'); // test connection
-      return {
-        exited: newPromise().promise,
-        async stop() {
-          await pool.end();
-        },
-      };
     },
-  };
+    async stop() {
+      await pool.end();
+    },
+  });
 
   return { dbModule, db };
 }

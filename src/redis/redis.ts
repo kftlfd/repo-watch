@@ -1,8 +1,7 @@
 import { Redis } from 'ioredis';
 
-import type { Module } from '@/lib/runtime/runtime.js';
 import { env } from '@/config/env.js';
-import { newPromise } from '@/utils/promises.js';
+import { defineModule } from '@/lib/runtime/runtime.js';
 
 export type { Redis };
 
@@ -13,17 +12,11 @@ export function createRedisModule() {
     maxRetriesPerRequest: null,
   });
 
-  const redisModule: Module = {
-    name: 'redis',
-    start() {
-      return Promise.resolve({
-        exited: newPromise().promise,
-        async stop() {
-          await redis.quit();
-        },
-      });
+  const redisModule = defineModule('redis', {
+    async stop() {
+      await redis.quit();
     },
-  };
+  });
 
   return { redisModule, redis };
 }

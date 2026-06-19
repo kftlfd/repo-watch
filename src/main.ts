@@ -2,13 +2,8 @@ import 'dotenv/config';
 
 import { createApp } from '@/app.js';
 import { createConfig } from '@/config/config.js';
-import {
-  createRuntime,
-  createRuntimeStatus,
-  createShutdownController,
-} from '@/lib/runtime/runtime.js';
+import { createRuntime, createRuntimeStatus } from '@/lib/runtime/runtime.js';
 import { createLogger } from '@/logger/logger.js';
-import { withTimeout } from '@/utils/promises.js';
 
 async function main() {
   const config = createConfig();
@@ -19,42 +14,24 @@ async function main() {
 
   const modules = createApp({ config, logger });
 
-  const runtime = createRuntime({ logger, modules, runtimeStatus });
-
-  const shutdown = createShutdownController({
+  const runtime = createRuntime({
+    config: config.runtime,
     logger,
-    shutdown: runtime.stop,
-    timeoutMs: config.runtime.shutdownTimeoutMs,
+    modules,
+    runtimeStatus: runtimeStatus.controller,
   });
-
-  const finished = runtime
-    .start()
-    .then(() => runtime.waitForExit())
-    .then((m) => {
-      if (m.status === 'finished') {
-        shutdown.trigger(`module exited: ${m.name}`, new Error('module exited unexpectedly'));
-      } else {
-        shutdown.trigger(
-          `module failed: ${m.name}`,
-          new Error('module failed', { cause: m.error }),
-        );
-      }
-    })
-    .catch((err: unknown) => {
-      shutdown.trigger('runtime error', new Error('runtime error', { cause: err }));
-    });
 
   process.on('SIGINT', (signal) => {
-    shutdown.trigger(signal);
+    runtime.shutdown(signal);
   });
   process.on('SIGTERM', (signal) => {
-    shutdown.trigger(signal);
+    runtime.shutdown(signal);
   });
   process.on('uncaughtException', (err) => {
-    shutdown.trigger('unhandled exception', err);
+    runtime.shutdown('unhandled exception', err);
   });
   process.on('unhandledRejection', (err) => {
-    shutdown.trigger(
+    runtime.shutdown(
       'unhandled promise rejection',
       new Error('unhandled promise rejection', { cause: err }),
     );
@@ -62,26 +39,15 @@ async function main() {
 
   const errors: unknown[] = [];
 
-  await shutdown.done
+  await runtime
+    .run()
     .then(() => {
       logger.info('Shutdown complete');
     })
     .catch((error: unknown) => {
-      logger.error(
-        { error, msg: error instanceof Error ? error.message : 'err' },
-        'Shutdown with error',
-      );
+      logger.error({ error }, 'Runtime error');
       errors.push(error);
     });
-
-  await withTimeout(
-    finished,
-    config.runtime.shutdownTimeoutMs,
-    new Error('timeout awaiting tasks finish'),
-  ).catch((error: unknown) => {
-    logger.error({ error }, 'Error awaiting tasks finish');
-    errors.push(error);
-  });
 
   if (errors.length > 0) {
     throw new AggregateError(errors, 'exited with errors');
@@ -89,6 +55,6 @@ async function main() {
 }
 
 main().catch((err: unknown) => {
-  console.error('main error:', err);
-  process.exit(1);
+  console.error(err);
+  process.exitCode = 1;
 });

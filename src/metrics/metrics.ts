@@ -5,13 +5,18 @@ export type MetricsRegistry = Registry;
 
 export type MetricsService = ReturnType<typeof createMetrics>;
 export type ServerMetrics = MetricsService['server'];
+export type ScannerMetrics = MetricsService['scanner'];
 
 export function createMetrics() {
   const registry = new Registry();
 
   collectDefaultMetrics({ register: registry });
 
-  return { registry, server: createServerMetrics(registry) };
+  return {
+    registry,
+    server: createServerMetrics(registry),
+    scanner: createScannerMetrics(registry),
+  };
 }
 
 function createServerMetrics(registry: MetricsRegistry) {
@@ -48,5 +53,38 @@ function createServerMetrics(registry: MetricsRegistry) {
 
   return {
     trackRequestMetrics,
+  };
+}
+
+function createScannerMetrics(registry: MetricsRegistry) {
+  const totalCycles = new Counter({
+    name: 'scanner_scan_cycles_total',
+    help: 'Total number of scan cycles',
+    registers: [registry],
+  });
+
+  const totalReposProcessed = new Counter({
+    name: 'scanner_repos_processed_total',
+    help: 'Total repos processed',
+    registers: [registry],
+  });
+
+  const totalGithubFailures = new Counter({
+    name: 'scanner_github_failures_total',
+    help: 'Total Github failures',
+    registers: [registry],
+  });
+
+  const totalNewReleases = new Counter({
+    name: 'scanner_new_releases_total',
+    help: 'Total new releases detected',
+    registers: [registry],
+  });
+
+  return {
+    totalCycles,
+    totalReposProcessed,
+    totalGithubFailures,
+    totalNewReleases,
   };
 }

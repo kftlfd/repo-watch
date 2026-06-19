@@ -81,6 +81,7 @@ export function createApp({ config, logger }: Deps) {
     repositoryRepo,
     githubClient: cachedGhClient,
     repoSubscriptionsQueue,
+    metrics: metrics.scanner,
   });
 
   // queue workers

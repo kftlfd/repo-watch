@@ -78,7 +78,7 @@
     - request count and duration (with Fastify hooks `onRequest`, `onResponse`)
     - `http_requests_total` - Counter with labels: method, route, status_code
     - `http_request_duration_seconds` - Histogram with labels: method, route
-  - [ ] scanner
+  - [x] scanner
     - increment counters at appropriate lifecycle points: total iterations, processed repos, failues, new releases
     - `scanner_scan_cycles_total` - Counter for number of scan cycles
     - `scanner_repos_processed_total` - Counter for repositories processed

@@ -3,6 +3,7 @@ import { err, ok, ResultAsync } from 'neverthrow';
 import type { ScannerConfig } from '@/config/config.js';
 import type { GithubClient } from '@/github/github.client.js';
 import type { Logger } from '@/logger/logger.js';
+import type { ScannerMetrics } from '@/metrics/metrics.js';
 import type { RepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
 import type { Repository, RepositoryRepo } from '@/repository/repository.repo.js';
 import { createLoop } from '@/lib/loop/loop.js';
@@ -13,10 +14,12 @@ export function createFetchWithRetryFn({
   log,
   config,
   githubClient,
+  metrics,
 }: {
   log: Logger;
   config: ScannerConfig;
   githubClient: GithubClient;
+  metrics: ScannerMetrics;
 }) {
   /**
    * Keep retrying with exponential backoff on rate-limits until success or non-rate-limit error
@@ -32,6 +35,8 @@ export function createFetchWithRetryFn({
       if (result.isOk()) {
         return { type: 'OK' as const, tag: result.value };
       }
+
+      metrics.totalGithubFailures.inc();
 
       const error = result.error;
       if (error.type !== 'HttpTooManyRequests') {
@@ -77,11 +82,13 @@ export function createProcessRepositoryFn({
   repositoryRepo,
   fetchWithRetry,
   repoSubscriptionsQueue,
+  metrics,
 }: {
   log: Logger;
   repositoryRepo: RepositoryRepo;
   fetchWithRetry: FetchWithRetryFn;
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
+  metrics: ScannerMetrics;
 }) {
   function enqueueSubsJob(repoId: number, repoName: string, latestTag: string) {
     return ResultAsync.fromPromise(
@@ -108,7 +115,9 @@ export function createProcessRepositoryFn({
 
     if (lastSeenTag === null) {
       log.info({ repoName, tag }, 'Saving initial release for a new repo');
-      return repositoryRepo.updateAfterScan(repoId, now, tag);
+      return repositoryRepo.updateAfterScan(repoId, now, tag).andTee(() => {
+        metrics.totalNewReleases.inc();
+      });
     }
 
     if (tag === lastSeenTag) {
@@ -118,6 +127,9 @@ export function createProcessRepositoryFn({
 
     return repositoryRepo
       .updateAfterScan(repoId, now, tag)
+      .andTee(() => {
+        metrics.totalNewReleases.inc();
+      })
       .andThen(() => enqueueSubsJob(repoId, repoName, tag))
       .andTee(() => {
         log.info({ repoName, latestTag: tag }, 'Subscriptions notifier enqueued');
@@ -169,6 +181,7 @@ type Deps = {
   githubClient: GithubClient;
   logger: Logger;
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
+  metrics: ScannerMetrics;
 };
 
 export function createScannerLoop({
@@ -177,15 +190,17 @@ export function createScannerLoop({
   githubClient,
   logger,
   repoSubscriptionsQueue,
+  metrics,
 }: Deps) {
   const log = logger.child({ module: 'scanner.loop' });
 
-  const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient });
+  const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient, metrics });
   const processRepository = createProcessRepositoryFn({
     log,
     repositoryRepo,
     fetchWithRetry,
     repoSubscriptionsQueue,
+    metrics,
   });
 
   function processRepos(repos: Repository[], signal?: AbortSignal) {
@@ -196,6 +211,7 @@ export function createScannerLoop({
         if (signal?.aborted) break;
         const res = await processRepository(repo, signal);
         totalCount++;
+        metrics.totalReposProcessed.inc();
         if (res.isErr()) {
           log.error({ repo: repo.fullName, error: res.error }, 'Process repo error');
           fails++;
@@ -227,6 +243,7 @@ export function createScannerLoop({
         const { totalCount: processed, fails } = runResult.value;
         log.info({ batchSize: config.batchSize, processed, fails }, 'Repos batch processed');
       }
+      metrics.totalCycles.inc();
       return config.scanIntervalMs;
     },
 

@@ -1,10 +1,11 @@
-import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 
 export type MetricsRegistry = Registry;
 
 export type MetricsService = ReturnType<typeof createMetrics>;
 export type ServerMetrics = MetricsService['server'];
 export type ScannerMetrics = MetricsService['scanner'];
+export type QueueMetrics = MetricsService['queue'];
 
 export function createMetrics() {
   const registry = new Registry();
@@ -15,6 +16,7 @@ export function createMetrics() {
     registry,
     server: createServerMetrics(registry),
     scanner: createScannerMetrics(registry),
+    queue: createQueueMetrics(registry),
   };
 }
 
@@ -71,4 +73,29 @@ function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
     totalGithubFailures,
     totalNewReleases,
   };
+}
+
+function createQueueMetrics(registry: MetricsRegistry, prefix = 'queue') {
+  const queueJobs = new Gauge({
+    name: `${prefix}_jobs`,
+    help: 'Jobs by state',
+    labelNames: ['queue', 'state'],
+    registers: [registry],
+  });
+
+  const jobsProcessed = new Counter({
+    name: `${prefix}_job_processed_total`,
+    help: 'Jobs processed',
+    labelNames: ['queue', 'status'],
+    registers: [registry],
+  });
+
+  const jobDuration = new Histogram({
+    name: `${prefix}_job_duration_seconds`,
+    help: 'Job duration',
+    labelNames: ['queue'],
+    registers: [registry],
+  });
+
+  return { queueJobs, jobsProcessed, jobDuration };
 }

@@ -211,7 +211,7 @@ export function createScannerLoop({
         if (signal?.aborted) break;
         const res = await processRepository(repo, signal);
         totalCount++;
-        metrics.totalReposProcessed.inc();
+        metrics.totalReposProcessed.inc({ status: res.isErr() ? 'err' : 'ok' });
         if (res.isErr()) {
           log.error({ repo: repo.fullName, error: res.error }, 'Process repo error');
           fails++;

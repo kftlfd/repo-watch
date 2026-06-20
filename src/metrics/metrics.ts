@@ -18,16 +18,16 @@ export function createMetrics() {
   };
 }
 
-function createServerMetrics(registry: MetricsRegistry) {
+function createServerMetrics(registry: MetricsRegistry, prefix = 'http') {
   const requestsTotal = new Counter({
-    name: 'http_requests_total',
+    name: `${prefix}_requests_total`,
     help: 'Total number of requests',
     labelNames: ['method', 'path', 'status'],
     registers: [registry],
   });
 
   const requestsDuration = new Histogram({
-    name: 'http_request_duration_seconds',
+    name: `${prefix}_request_duration_seconds`,
     help: 'Request duration',
     labelNames: ['method', 'path'],
     registers: [registry],
@@ -39,27 +39,28 @@ function createServerMetrics(registry: MetricsRegistry) {
   };
 }
 
-function createScannerMetrics(registry: MetricsRegistry) {
+function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
   const totalCycles = new Counter({
-    name: 'scanner_scan_cycles_total',
+    name: `${prefix}_scan_cycles_total`,
     help: 'Total number of scan cycles',
     registers: [registry],
   });
 
   const totalReposProcessed = new Counter({
-    name: 'scanner_repos_processed_total',
+    name: `${prefix}_repos_processed_total`,
     help: 'Total repos processed',
+    labelNames: ['status'],
     registers: [registry],
   });
 
   const totalGithubFailures = new Counter({
-    name: 'scanner_github_failures_total',
+    name: `${prefix}_github_failures_total`,
     help: 'Total Github failures',
     registers: [registry],
   });
 
   const totalNewReleases = new Counter({
-    name: 'scanner_new_releases_total',
+    name: `${prefix}_new_releases_total`,
     help: 'Total new releases detected',
     registers: [registry],
   });

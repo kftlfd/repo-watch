@@ -48,6 +48,7 @@ export type QueueConfig = {
   expBackoffDelay: number;
   keepCompletedCount: number;
   keepFailedCount: number;
+  metricsIntervalMs: number;
 };
 
 function queueConf(overrides?: Partial<QueueConfig>): QueueConfig {
@@ -56,6 +57,7 @@ function queueConf(overrides?: Partial<QueueConfig>): QueueConfig {
     expBackoffDelay: 1_000,
     keepCompletedCount: 100,
     keepFailedCount: 50,
+    metricsIntervalMs: 10_000,
     ...overrides,
   };
 }
@@ -75,7 +77,7 @@ function workerConf(overrides?: Partial<WorkerConfig>): WorkerConfig {
   };
 }
 
-type QueueWorkerConfig = {
+export type QueueWorkerConfig = {
   queue: QueueConfig;
   worker: WorkerConfig;
 };

@@ -55,6 +55,7 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
+        onGhFail: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo');
@@ -76,6 +77,7 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
+        onGhFail: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo');
@@ -96,6 +98,7 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
+        onGhFail: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo');
@@ -115,6 +118,7 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
+        onGhFail: vi.fn(),
       });
 
       const controller = new AbortController();
@@ -139,6 +143,7 @@ describe('scanner.loop', () => {
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
+        onNewRelease: vi.fn(),
       });
 
       await processRepository(createRepository({ lastSeenTag: null }));
@@ -158,6 +163,7 @@ describe('scanner.loop', () => {
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
+        onNewRelease: vi.fn(),
       });
 
       const repo = createRepository({ lastSeenTag: 'v1.0.0' });
@@ -178,6 +184,7 @@ describe('scanner.loop', () => {
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
+        onNewRelease: vi.fn(),
       });
 
       const repo = createRepository({ lastSeenTag: 'v1.0.0' });
@@ -202,6 +209,7 @@ describe('scanner.loop', () => {
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: enqueue,
         }),
+        onNewRelease: vi.fn(),
       });
 
       const repo = createRepository({ lastSeenTag: 'v1.0.0' });
@@ -217,6 +225,7 @@ describe('scanner.loop', () => {
         repositoryRepo: createMockRepositoryRepo(),
         fetchWithRetry: vi.fn().mockReturnValue(errAsync({ type: 'ABORTED' })),
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue(),
+        onNewRelease: vi.fn(),
       });
 
       const result = await processRepository(createRepository({ lastSeenTag: 'v1.0.0' }));
@@ -236,6 +245,7 @@ describe('scanner.loop', () => {
         repoSubscriptionsQueue: createMockRepoSubscriptionsQueue({
           enqueueRepoSubscriptions: vi.fn().mockRejectedValue(enqueueError),
         }),
+        onNewRelease: vi.fn(),
       });
 
       const result = await processRepository(createRepository({ lastSeenTag: 'v1.0.0' }));
@@ -255,6 +265,7 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
+        onGhFail: vi.fn(),
       });
 
       const controller = new AbortController();
@@ -283,6 +294,7 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
+        onGhFail: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo', controller.signal);
@@ -306,6 +318,7 @@ describe('scanner.loop', () => {
         repositoryRepo,
         fetchWithRetry,
         repoSubscriptionsQueue,
+        onNewRelease: vi.fn(),
       });
 
       const result = await processRepository(createRepository({}));
@@ -333,6 +346,7 @@ describe('scanner.loop', () => {
         repositoryRepo,
         fetchWithRetry,
         repoSubscriptionsQueue,
+        onNewRelease: vi.fn(),
       });
 
       const controller = new AbortController();

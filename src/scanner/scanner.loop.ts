@@ -14,12 +14,12 @@ export function createFetchWithRetryFn({
   log,
   config,
   githubClient,
-  metrics,
+  onGhFail,
 }: {
   log: Logger;
   config: ScannerConfig;
   githubClient: GithubClient;
-  metrics: ScannerMetrics;
+  onGhFail: () => void;
 }) {
   /**
    * Keep retrying with exponential backoff on rate-limits until success or non-rate-limit error
@@ -36,7 +36,7 @@ export function createFetchWithRetryFn({
         return { type: 'OK' as const, tag: result.value };
       }
 
-      metrics.totalGithubFailures.inc();
+      onGhFail();
 
       const error = result.error;
       if (error.type !== 'HttpTooManyRequests') {
@@ -82,13 +82,13 @@ export function createProcessRepositoryFn({
   repositoryRepo,
   fetchWithRetry,
   repoSubscriptionsQueue,
-  metrics,
+  onNewRelease,
 }: {
   log: Logger;
   repositoryRepo: RepositoryRepo;
   fetchWithRetry: FetchWithRetryFn;
   repoSubscriptionsQueue: RepoSubscriptionsQueue;
-  metrics: ScannerMetrics;
+  onNewRelease: () => void;
 }) {
   function enqueueSubsJob(repoId: number, repoName: string, latestTag: string) {
     return ResultAsync.fromPromise(
@@ -116,7 +116,7 @@ export function createProcessRepositoryFn({
     if (lastSeenTag === null) {
       log.info({ repoName, tag }, 'Saving initial release for a new repo');
       return repositoryRepo.updateAfterScan(repoId, now, tag).andTee(() => {
-        metrics.totalNewReleases.inc();
+        onNewRelease();
       });
     }
 
@@ -128,7 +128,7 @@ export function createProcessRepositoryFn({
     return repositoryRepo
       .updateAfterScan(repoId, now, tag)
       .andTee(() => {
-        metrics.totalNewReleases.inc();
+        onNewRelease();
       })
       .andThen(() => enqueueSubsJob(repoId, repoName, tag))
       .andTee(() => {
@@ -194,13 +194,23 @@ export function createScannerLoop({
 }: Deps) {
   const log = logger.child({ module: 'scanner.loop' });
 
-  const fetchWithRetry = createFetchWithRetryFn({ log, config, githubClient, metrics });
+  const fetchWithRetry = createFetchWithRetryFn({
+    log,
+    config,
+    githubClient,
+    onGhFail: () => {
+      metrics.totalGithubFailures.inc();
+    },
+  });
+
   const processRepository = createProcessRepositoryFn({
     log,
     repositoryRepo,
     fetchWithRetry,
     repoSubscriptionsQueue,
-    metrics,
+    onNewRelease: () => {
+      metrics.totalNewReleases.inc();
+    },
   });
 
   function processRepos(repos: Repository[], signal?: AbortSignal) {

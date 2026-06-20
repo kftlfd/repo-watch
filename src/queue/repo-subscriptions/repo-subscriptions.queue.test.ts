@@ -12,8 +12,8 @@ import {
 } from '@/test/mocks.js';
 import { sleep } from '@/utils/sleep.js';
 
-import type { RepoSubscriptionsJob } from './repo-subscriptions.types.js';
-import { createProcessRepoSubscriptionJob } from './repo-subscriptions.worker.js';
+import type { RepoSubscriptionsJob } from './repo-subscriptions.queue.js';
+import { createProcessRepoSubscriptionJob } from './repo-subscriptions.queue.js';
 
 vi.mock('@/utils/sleep.js', () => ({
   sleep: vi.fn().mockResolvedValue(undefined),
@@ -53,6 +53,7 @@ describe('repo-subscriptions.worker', () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v3.0.0'));
     const getConfirmedByRepositoryIdBatch = vi.fn();
     const enqueueReleaseEmail = vi.fn();
+    const skip = vi.fn();
 
     const processJob = createProcessRepoSubscriptionJob({
       config: jobConfig,
@@ -60,6 +61,7 @@ describe('repo-subscriptions.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       subscriptionRepo: createMockSubscriptionRepo({ getConfirmedByRepositoryIdBatch }),
       releaseNotificationsQueue: createMockReleaseNotificationsQueue({ enqueueReleaseEmail }),
+      onSkip: skip,
     });
 
     await processJob(createJob() as never);
@@ -67,6 +69,7 @@ describe('repo-subscriptions.worker', () => {
     expect(getLatestTag).toHaveBeenCalledWith(1);
     expect(getConfirmedByRepositoryIdBatch).not.toHaveBeenCalled();
     expect(enqueueReleaseEmail).not.toHaveBeenCalled();
+    expect(skip).toHaveBeenCalledTimes(1);
   });
 
   it('throws when repositoryRepo.getLatestTag fails', async () => {
@@ -80,6 +83,7 @@ describe('repo-subscriptions.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       subscriptionRepo: createMockSubscriptionRepo(),
       releaseNotificationsQueue: createMockReleaseNotificationsQueue(),
+      onSkip: vi.fn(),
     });
 
     await expect(processJob(createJob() as never)).rejects.toThrow();
@@ -99,6 +103,7 @@ describe('repo-subscriptions.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag, update }),
       subscriptionRepo: createMockSubscriptionRepo({ getConfirmedByRepositoryIdBatch }),
       releaseNotificationsQueue: createMockReleaseNotificationsQueue({ enqueueReleaseEmail }),
+      onSkip: vi.fn(),
     });
 
     await processJob(createJob() as never);
@@ -146,6 +151,7 @@ describe('repo-subscriptions.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag, update }),
       subscriptionRepo: createMockSubscriptionRepo({ getConfirmedByRepositoryIdBatch }),
       releaseNotificationsQueue: createMockReleaseNotificationsQueue({ enqueueReleaseEmail }),
+      onSkip: vi.fn(),
     });
 
     await processJob(createJob() as never);
@@ -208,6 +214,7 @@ describe('repo-subscriptions.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       subscriptionRepo: createMockSubscriptionRepo({ getConfirmedByRepositoryIdBatch }),
       releaseNotificationsQueue: createMockReleaseNotificationsQueue({ enqueueReleaseEmail }),
+      onSkip: vi.fn(),
     });
 
     await processJob(createJob() as never);

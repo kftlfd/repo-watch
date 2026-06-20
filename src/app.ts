@@ -7,11 +7,8 @@ import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
 import { createMetrics } from '@/metrics/metrics.js';
 import { createConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
-import { createConfirmationEmailsWorker } from '@/queue/confirmation-emails/confirmation-emails.worker.js';
 import { createReleaseNotificationsQueue } from '@/queue/release-notifications/release-notifications.queue.js';
-import { createReleaseNotificationsWorker } from '@/queue/release-notifications/release-notifications.worker.js';
 import { createRepoSubscriptionsQueue } from '@/queue/repo-subscriptions/repo-subscriptions.queue.js';
-import { createRepoSubscriptionsWorker } from '@/queue/repo-subscriptions/repo-subscriptions.worker.js';
 import { createRedisModule } from '@/redis/redis.js';
 import { createRepositoryRepo } from '@/repository/repository.repo.js';
 import { createScannerLoop } from '@/scanner/scanner.loop.js';
@@ -52,16 +49,22 @@ export function createApp({ config, logger }: Deps) {
 
   // queues
   const confirmationEmailsQueue = createConfirmationEmailsQueue({
-    config: config.queues.confirmationEmails.queue,
+    config: config.queues.confirmationEmails,
+    logger,
     redis,
+    metrics: metrics.queue,
   });
   const releaseNotificationsQueue = createReleaseNotificationsQueue({
-    config: config.queues.releaseNotifications.queue,
+    config: config.queues.releaseNotifications,
+    logger,
     redis,
+    metrics: metrics.queue,
   });
   const repoSubscriptionsQueue = createRepoSubscriptionsQueue({
-    config: config.queues.repoSubscriptions.queue,
+    config: config.queues.repoSubscriptions,
+    logger,
     redis,
+    metrics: metrics.queue,
   });
 
   // services
@@ -72,7 +75,7 @@ export function createApp({ config, logger }: Deps) {
     subscriptionRepo,
     tokenService,
     githubClient: cachedGhClient,
-    confirmationEmailsQueue,
+    confirmationEmailsQueue: confirmationEmailsQueue.service,
   });
   const emailService = createEmailService();
   const scannerLoop = createScannerLoop({
@@ -80,34 +83,25 @@ export function createApp({ config, logger }: Deps) {
     logger,
     repositoryRepo,
     githubClient: cachedGhClient,
-    repoSubscriptionsQueue,
+    repoSubscriptionsQueue: repoSubscriptionsQueue.service,
     metrics: metrics.scanner,
   });
 
   // queue workers
   const workers = [
-    createConfirmationEmailsWorker({
-      redis,
-      config: config.queues.confirmationEmails.worker,
-      logger,
+    confirmationEmailsQueue.createWorker({
       emailService,
     }),
-    createReleaseNotificationsWorker({
-      redis,
-      config: config.queues.releaseNotifications.worker,
-      logger,
+    releaseNotificationsQueue.createWorker({
       emailService,
       repositoryRepo,
       tokenService,
     }),
-    createRepoSubscriptionsWorker({
-      redis,
-      config: config.queues.repoSubscriptions.worker,
-      jobConfig: config.queues.repoSubscriptions.job,
-      logger,
+    repoSubscriptionsQueue.createWorker({
+      config: config.queues.repoSubscriptions.job,
       repositoryRepo,
       subscriptionRepo,
-      releaseNotificationsQueue,
+      releaseNotificationsQueue: releaseNotificationsQueue.service,
     }),
   ];
 
@@ -123,5 +117,14 @@ export function createApp({ config, logger }: Deps) {
     subscriptionWeb,
   });
 
-  return [dbModule, redisModule, server, scannerLoop, ...workers];
+  return [
+    dbModule,
+    redisModule,
+    confirmationEmailsQueue.module,
+    releaseNotificationsQueue.module,
+    repoSubscriptionsQueue.module,
+    server,
+    scannerLoop,
+    ...workers,
+  ];
 }

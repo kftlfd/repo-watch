@@ -60,7 +60,11 @@ function createSubsriptionsMetrics(registry: MetricsRegistry, prefix = 'subscrip
     registers: [registry],
   });
 
-  return { subscriptionsTotal };
+  function recordAction(action: 'sub' | 'confirm-sub' | 'unsub') {
+    subscriptionsTotal.inc({ action });
+  }
+
+  return { recordAction };
 }
 
 function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {

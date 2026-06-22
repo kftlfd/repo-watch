@@ -179,7 +179,7 @@ export function createSubscriptionService({
     });
 
     return emailOk.andThen(() => {
-      metrics.subscriptionsTotal.inc({ action: 'sub' });
+      metrics.recordAction('sub');
       return ok();
     });
   }
@@ -219,7 +219,7 @@ export function createSubscriptionService({
         });
       })
       .andThen(() => {
-        metrics.subscriptionsTotal.inc({ action: 'confirm-sub' });
+        metrics.recordAction('confirm-sub');
         return ok();
       });
   }
@@ -251,7 +251,7 @@ export function createSubscriptionService({
         });
       })
       .andThen(() => {
-        metrics.subscriptionsTotal.inc({ action: 'unsub' });
+        metrics.recordAction('unsub');
         return ok();
       });
   }

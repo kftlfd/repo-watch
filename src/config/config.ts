@@ -143,7 +143,7 @@ const defaultConfig: Config = {
     maxBackoffDelayMs: 30 * 60_000,
   },
   tokenService: {
-    baseUrl: env.BASE_URL ?? '',
+    baseUrl: env.SERVER_BASE_URL,
     serverSecret: env.SERVER_SECRET,
     tokenExpiryHours: 24,
   },

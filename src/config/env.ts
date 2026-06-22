@@ -10,6 +10,7 @@ const EnvSchema = z.object({
   BASE_URL: z.url().optional().catch('http://localhost:3000'),
   EMAIL_FROM: z.email().optional().default('noreply@example.com'),
   SERVER_SECRET: z.string().min(1),
+  METRICS_API_KEY: z.string().min(1),
 });
 
 type EnvInput = Record<keyof z.infer<typeof EnvSchema>, unknown>;
@@ -24,4 +25,5 @@ export const env = EnvSchema.parse({
   BASE_URL: process.env['BASE_URL'],
   EMAIL_FROM: process.env['EMAIL_FROM'],
   SERVER_SECRET: process.env['SERVER_SECRET'],
+  METRICS_API_KEY: process.env['METRICS_API_KEY'],
 } satisfies EnvInput);

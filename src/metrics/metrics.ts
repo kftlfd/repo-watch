@@ -1,5 +1,7 @@
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 
+import { env } from '@/config/env.js';
+
 export type MetricsRegistry = Registry;
 
 export type MetricsService = ReturnType<typeof createMetrics>;
@@ -11,6 +13,11 @@ export type EmailsMetrics = MetricsService['emails'];
 
 export function createMetrics() {
   const registry = new Registry();
+
+  registry.setDefaultLabels({
+    service: 'repo-watch',
+    env: env.NODE_ENV,
+  });
 
   collectDefaultMetrics({ register: registry });
 

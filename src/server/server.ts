@@ -80,7 +80,11 @@ export function createFastifyServer({
     },
   });
 
-  app.get('/metrics', (_, reply) => {
+  app.get('/metrics', (req, reply) => {
+    if (req.headers.authorization !== `Bearer ${config.metricsApiKey}`) {
+      reply.callNotFound();
+      return;
+    }
     reply.header('content-type', metricsRegistry.contentType);
     return metricsRegistry.metrics();
   });

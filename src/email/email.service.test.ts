@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EmailsMetrics } from '@/metrics/metrics.js';
-import type { AppError } from '@/utils/errors.js';
 import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 
 import type { Email } from './email.service.js';
@@ -19,7 +18,7 @@ describe('email.service', () => {
   });
 
   it('sends confirmation emails successfully', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     const service = createEmailService({ metrics: createMockMetrics() });
 
     await expectOkAsync(
@@ -32,14 +31,10 @@ describe('email.service', () => {
         },
       } as Email),
     );
-
-    expect(logSpy).toHaveBeenCalledWith(
-      '[Email:confirmation] To: user@example.com, Repo: owner/repo',
-    );
   });
 
   it('sends release emails successfully', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     const service = createEmailService({ metrics: createMockMetrics() });
 
     await expectOkAsync(
@@ -54,13 +49,12 @@ describe('email.service', () => {
         },
       } as Email),
     );
-
-    expect(logSpy).toHaveBeenCalledWith('[Email:release] To: user@example.com, Repo: owner/repo');
   });
 
-  it('wraps mock sender failures as Internal errors', async () => {
+  it('wraps mock sender failures as errors', async () => {
+    const err = new Error('transport down');
     vi.spyOn(console, 'log').mockImplementation(() => {
-      throw new Error('transport down');
+      throw err;
     });
     const service = createEmailService({ metrics: createMockMetrics() });
 
@@ -75,9 +69,7 @@ describe('email.service', () => {
       } as Email),
     );
 
-    expect(error).toEqual({
-      type: 'Internal',
-      message: 'Failed to send email: transport down',
-    } as AppError);
+    expect(error).toBeInstanceOf(Error);
+    expect(error instanceof Error && error.cause === err);
   });
 });

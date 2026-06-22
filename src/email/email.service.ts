@@ -36,12 +36,16 @@ type Deps = {
 export function createEmailService({ metrics }: Deps) {
   function sendEmail(to: string, email: Email) {
     return renderEmail(email)
-      .asyncAndThen(({ subject, html }) => {
-        console.log(`[Email:${email.type}]`, { to, repo: email.data.repoName, subject, html });
-        return ResultAsync.fromPromise(sleep(100), (err) => {
-          return new Error('failed to send email', { cause: err });
-        });
-      })
+      .asyncAndThen(({ subject, html }) =>
+        ResultAsync.fromPromise(
+          sleep(100).then(() => {
+            console.log(`[Email:${email.type}]`, { to, repo: email.data.repoName, subject, html });
+          }),
+          (err) => {
+            return new Error('failed to send email', { cause: err });
+          },
+        ),
+      )
       .andTee(() => {
         metrics.recordEmailStatus('ok');
       })

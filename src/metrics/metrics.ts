@@ -134,5 +134,9 @@ function createEmailMetrics(registry: MetricsRegistry, prefix = 'emails') {
     registers: [registry],
   });
 
-  return { emailsTotal };
+  function recordEmailStatus(status: 'ok' | 'fail') {
+    emailsTotal.inc({ status });
+  }
+
+  return { recordEmailStatus };
 }

@@ -44,7 +44,7 @@ export function createMockGithubClient(overrides?: Partial<GithubClient>): Githu
 
 export function createMockEmailService(overrides?: Partial<EmailService>): EmailService {
   return {
-    sendEmail: vi.fn(),
+    sendEmail: vi.fn().mockReturnValue(okAsync()),
     ...overrides,
   };
 }

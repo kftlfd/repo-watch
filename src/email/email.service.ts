@@ -43,10 +43,10 @@ export function createEmailService({ metrics }: Deps) {
         });
       })
       .andTee(() => {
-        metrics.emailsTotal.inc({ status: 'ok' });
+        metrics.recordEmailStatus('ok');
       })
       .orTee(() => {
-        metrics.emailsTotal.inc({ status: 'fail' });
+        metrics.recordEmailStatus('fail');
       });
   }
 

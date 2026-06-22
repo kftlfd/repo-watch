@@ -2,6 +2,7 @@ import { err, ok, ResultAsync } from 'neverthrow';
 
 import type { GithubClient } from '@/github/github.client.js';
 import type { Logger } from '@/logger/logger.js';
+import type { SubscriptionsMetrics } from '@/metrics/metrics.js';
 import type { ConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
 import type { RepositoryRepo } from '@/repository/repository.repo.js';
 import type {
@@ -63,6 +64,7 @@ type Deps = {
   githubClient: GithubClient;
   logger: Logger;
   confirmationEmailsQueue: ConfirmationEmailsQueue;
+  metrics: SubscriptionsMetrics;
 };
 
 export function createSubscriptionService({
@@ -72,6 +74,7 @@ export function createSubscriptionService({
   githubClient,
   logger,
   confirmationEmailsQueue,
+  metrics,
 }: Deps): SubscriptionService {
   const log = logger.child({ module: 'subscription.service' });
 
@@ -175,7 +178,10 @@ export function createSubscriptionService({
       );
     });
 
-    return emailOk.andThen(() => ok());
+    return emailOk.andThen(() => {
+      metrics.subscriptionsTotal.inc({ action: 'sub' });
+      return ok();
+    });
   }
 
   function confirm(token: string) {
@@ -212,7 +218,10 @@ export function createSubscriptionService({
           log.error({ error }, 'DB Error: failed to delete token');
         });
       })
-      .andThen(() => ok());
+      .andThen(() => {
+        metrics.subscriptionsTotal.inc({ action: 'confirm-sub' });
+        return ok();
+      });
   }
 
   function unsubscribe(token: string): ResultAsync<void, AppError> {
@@ -241,7 +250,10 @@ export function createSubscriptionService({
           });
         });
       })
-      .andThen(() => ok());
+      .andThen(() => {
+        metrics.subscriptionsTotal.inc({ action: 'unsub' });
+        return ok();
+      });
   }
 
   function listSubscriptions(email: string) {

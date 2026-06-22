@@ -1,6 +1,7 @@
 import { Result, ResultAsync } from 'neverthrow';
 
-import type { AppError } from '@/utils/errors.js';
+import type { EmailsMetrics } from '@/metrics/metrics.js';
+import { sleep } from '@/utils/sleep.js';
 
 import type { ConfirmationEmailData, ReleaseEmailData } from './templates.js';
 import { renderConfirmationEmail, renderReleaseEmail } from './templates.js';
@@ -9,11 +10,9 @@ export type Email =
   | { type: 'confirmation'; data: ConfirmationEmailData }
   | { type: 'release'; data: ReleaseEmailData };
 
-export type EmailService = {
-  sendEmail(to: string, email: Email): ResultAsync<void, AppError>;
-};
+export type EmailService = ReturnType<typeof createEmailService>;
 
-function renderEmailUnsafe(email: Email) {
+function tryRenderEmail(email: Email) {
   switch (email.type) {
     case 'confirmation':
       return renderConfirmationEmail(email.data);
@@ -26,30 +25,31 @@ function renderEmailUnsafe(email: Email) {
 }
 
 const renderEmail = Result.fromThrowable(
-  renderEmailUnsafe,
-  () => ({ type: 'Internal', message: 'Failed to render email' }) as AppError,
+  tryRenderEmail,
+  (err) => new Error('failed to render email', { cause: err }),
 );
 
-async function mockSendEmail(to: string, email: Email) {
-  console.log(`[Email:${email.type}] To: ${to}, Repo: ${email.data.repoName}`);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return;
-}
+type Deps = {
+  metrics: EmailsMetrics;
+};
 
-function sendEmail(to: string, email: Email) {
-  const renderedEmail = renderEmail(email);
+export function createEmailService({ metrics }: Deps) {
+  function sendEmail(to: string, email: Email) {
+    return renderEmail(email)
+      .asyncAndThen(({ subject, html }) => {
+        console.log(`[Email:${email.type}]`, { to, repo: email.data.repoName, subject, html });
+        return ResultAsync.fromPromise(sleep(100), (err) => {
+          return new Error('failed to send email', { cause: err });
+        });
+      })
+      .andTee(() => {
+        metrics.emailsTotal.inc({ status: 'ok' });
+      })
+      .orTee(() => {
+        metrics.emailsTotal.inc({ status: 'fail' });
+      });
+  }
 
-  const ok = renderedEmail.asyncAndThen(() =>
-    ResultAsync.fromPromise(mockSendEmail(to, email), (error) => {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      return { type: 'Internal', message: `Failed to send email: ${msg}` } as AppError;
-    }),
-  );
-
-  return ok;
-}
-
-export function createEmailService(): EmailService {
   return {
     sendEmail,
   };

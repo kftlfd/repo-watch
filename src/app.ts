@@ -77,7 +77,7 @@ export function createApp({ config, logger }: Deps) {
     githubClient: cachedGhClient,
     confirmationEmailsQueue: confirmationEmailsQueue.service,
   });
-  const emailService = createEmailService();
+  const emailService = createEmailService({ metrics: metrics.emails });
   const scannerLoop = createScannerLoop({
     config: config.scanner,
     logger,

@@ -6,6 +6,7 @@ export type MetricsService = ReturnType<typeof createMetrics>;
 export type ServerMetrics = MetricsService['server'];
 export type ScannerMetrics = MetricsService['scanner'];
 export type QueueMetrics = MetricsService['queue'];
+export type EmailsMetrics = MetricsService['emails'];
 
 export function createMetrics() {
   const registry = new Registry();
@@ -17,6 +18,7 @@ export function createMetrics() {
     server: createServerMetrics(registry),
     scanner: createScannerMetrics(registry),
     queue: createQueueMetrics(registry),
+    emails: createEmailMetrics(registry),
   };
 }
 
@@ -98,4 +100,15 @@ function createQueueMetrics(registry: MetricsRegistry, prefix = 'queue') {
   });
 
   return { queueJobs, jobsProcessed, jobDuration };
+}
+
+function createEmailMetrics(registry: MetricsRegistry, prefix = 'emails') {
+  const emailsTotal = new Counter({
+    name: `${prefix}_total`,
+    help: 'Total emails sent',
+    labelNames: ['status'],
+    registers: [registry],
+  });
+
+  return { emailsTotal };
 }

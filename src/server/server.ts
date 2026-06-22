@@ -11,18 +11,49 @@ import {
 
 import type { ServerConfig } from '@/config/config.js';
 import type { Logger } from '@/logger/logger.js';
+import type { MetricsRegistry, ServerMetrics } from '@/metrics/metrics.js';
 import { defineModule } from '@/lib/runtime/runtime.js';
+
+const requestTimer = Symbol('request-timer');
 
 type Deps = {
   config: ServerConfig;
   logger: Logger;
+  metrics: ServerMetrics;
+  metricsRegistry: MetricsRegistry;
   subscriptionApi: FastifyPluginCallback;
   subscriptionWeb: FastifyPluginCallback;
 };
 
-export function createFastifyServer({ config, logger, subscriptionApi, subscriptionWeb }: Deps) {
+export function createFastifyServer({
+  config,
+  logger,
+  metrics,
+  metricsRegistry,
+  subscriptionApi,
+  subscriptionWeb,
+}: Deps) {
   const app = Fastify({
     loggerInstance: logger,
+  });
+
+  app.addHook('onRequest', (req, reply, done) => {
+    (req as typeof req & { [requestTimer]: () => number })[requestTimer] =
+      metrics.requestsDuration.startTimer({
+        method: req.method,
+        path: req.routeOptions.url,
+      });
+    done();
+  });
+
+  app.addHook('onResponse', (req, reply, done) => {
+    (req as typeof req & { [requestTimer]: () => number })[requestTimer]();
+    metrics.requestsTotal.inc({
+      method: req.method,
+      path: req.routeOptions.url,
+      status: reply.statusCode,
+    });
+    done();
   });
 
   app.setValidatorCompiler(validatorCompiler);
@@ -47,6 +78,15 @@ export function createFastifyServer({ config, logger, subscriptionApi, subscript
       hideClientButton: true,
       defaultOpenAllTags: true,
     },
+  });
+
+  app.get('/metrics', (req, reply) => {
+    if (req.headers.authorization !== `Bearer ${config.metricsApiKey}`) {
+      reply.callNotFound();
+      return;
+    }
+    reply.header('content-type', metricsRegistry.contentType);
+    return metricsRegistry.metrics();
   });
 
   app.register(formbody);

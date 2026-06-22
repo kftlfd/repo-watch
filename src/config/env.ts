@@ -1,27 +1,33 @@
 import { z } from 'zod';
 
 const EnvSchema = z.object({
+  // required
+  SERVER_SECRET: z.string().min(1),
+  DATABASE_URL: z.url(),
+  REDIS_URL: z.url(),
+
+  // optional
   NODE_ENV: z.enum(['dev', 'test', 'prod']).catch('prod'),
   HOST: z.string().min(1).optional(),
   PORT: z.coerce.number().int().optional(),
-  DATABASE_URL: z.url().min(1),
-  REDIS_URL: z.url().min(1),
-  GITHUB_TOKEN: z.string().min(1).optional().catch(undefined),
-  BASE_URL: z.url().optional().catch('http://localhost:3000'),
-  EMAIL_FROM: z.email().optional().default('noreply@example.com'),
-  SERVER_SECRET: z.string().min(1),
+  SERVER_BASE_URL: z.url().default('http://localhost:3000'),
+  EMAIL_FROM: z.email().default('noreply@repo.watch'),
+  GITHUB_TOKEN: z.string().min(1).optional(),
+  METRICS_API_KEY: z.string().min(1).default('prometheus'),
 });
 
 type EnvInput = Record<keyof z.infer<typeof EnvSchema>, unknown>;
 
 export const env = EnvSchema.parse({
+  SERVER_SECRET: process.env['SERVER_SECRET'],
+  DATABASE_URL: process.env['DATABASE_URL'],
+  REDIS_URL: process.env['REDIS_URL'],
+
   NODE_ENV: process.env['NODE_ENV'],
   HOST: process.env['HOST'],
   PORT: process.env['PORT'],
-  DATABASE_URL: process.env['DATABASE_URL'],
-  REDIS_URL: process.env['REDIS_URL'],
-  GITHUB_TOKEN: process.env['GITHUB_TOKEN'],
-  BASE_URL: process.env['BASE_URL'],
+  SERVER_BASE_URL: process.env['SERVER_BASE_URL'],
   EMAIL_FROM: process.env['EMAIL_FROM'],
-  SERVER_SECRET: process.env['SERVER_SECRET'],
+  GITHUB_TOKEN: process.env['GITHUB_TOKEN'],
+  METRICS_API_KEY: process.env['METRICS_API_KEY'],
 } satisfies EnvInput);

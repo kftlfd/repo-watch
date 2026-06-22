@@ -11,8 +11,8 @@ import {
   createMockTokenService,
 } from '@/test/mocks.js';
 
-import type { ReleaseEmailJob } from './release-notifications.types.js';
-import { createProcessReleaseNotificationJob } from './release-notifications.worker.js';
+import type { ReleaseEmailJob } from './release-notifications.queue.js';
+import { createProcessReleaseNotificationJob } from './release-notifications.queue.js';
 
 function createJob(overrides?: Partial<{ id: string; data: ReleaseEmailJob }>) {
   return {
@@ -42,12 +42,14 @@ describe('release-notifications.worker', () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v3.0.0'));
     const createToken = vi.fn();
     const sendEmail = vi.fn();
+    const skip = vi.fn();
 
     const processJob = createProcessReleaseNotificationJob({
       log: logger,
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       tokenService: createMockTokenService({ createToken }),
       emailService: createMockEmailService({ sendEmail }),
+      onSkip: skip,
     });
 
     await processJob(createJob() as never);
@@ -58,6 +60,7 @@ describe('release-notifications.worker', () => {
     expect(logger.info).toHaveBeenCalledWith(
       'Skipping outdated job job-1: job tag v2.0.0 != latest tag v3.0.0',
     );
+    expect(skip).toHaveBeenCalledTimes(1);
   });
 
   it('throws when latest tag lookup fails', async () => {
@@ -68,6 +71,7 @@ describe('release-notifications.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       tokenService: createMockTokenService(),
       emailService: createMockEmailService(),
+      onSkip: vi.fn(),
     });
 
     await expect(processJob(createJob() as never)).rejects.toThrow();
@@ -88,6 +92,7 @@ describe('release-notifications.worker', () => {
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       tokenService: createMockTokenService({ createToken, getTokenUrls }),
       emailService: createMockEmailService({ sendEmail }),
+      onSkip: vi.fn(),
     });
 
     await processJob(createJob() as never);
@@ -129,6 +134,7 @@ describe('release-notifications.worker', () => {
         } satisfies TokenUrls),
       }),
       emailService: createMockEmailService({ sendEmail }),
+      onSkip: vi.fn(),
     });
 
     await expect(processJob(createJob() as never)).rejects.toThrow('Failed to send email');

@@ -15,6 +15,7 @@ export type DBConfig = {
 export type ServerConfig = {
   host: string;
   port: number;
+  metricsApiKey: string;
 };
 
 export type GithubClientConfig = {
@@ -48,6 +49,7 @@ export type QueueConfig = {
   expBackoffDelay: number;
   keepCompletedCount: number;
   keepFailedCount: number;
+  metricsIntervalMs: number;
 };
 
 function queueConf(overrides?: Partial<QueueConfig>): QueueConfig {
@@ -56,6 +58,7 @@ function queueConf(overrides?: Partial<QueueConfig>): QueueConfig {
     expBackoffDelay: 1_000,
     keepCompletedCount: 100,
     keepFailedCount: 50,
+    metricsIntervalMs: 10_000,
     ...overrides,
   };
 }
@@ -75,7 +78,7 @@ function workerConf(overrides?: Partial<WorkerConfig>): WorkerConfig {
   };
 }
 
-type QueueWorkerConfig = {
+export type QueueWorkerConfig = {
   queue: QueueConfig;
   worker: WorkerConfig;
 };
@@ -120,6 +123,7 @@ const defaultConfig: Config = {
   server: {
     host: env.HOST ?? (env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0'),
     port: env.PORT ?? 3000,
+    metricsApiKey: env.METRICS_API_KEY,
   },
   githubClient: {
     baseUrl: 'https://api.github.com',
@@ -139,7 +143,7 @@ const defaultConfig: Config = {
     maxBackoffDelayMs: 30 * 60_000,
   },
   tokenService: {
-    baseUrl: env.BASE_URL ?? '',
+    baseUrl: env.SERVER_BASE_URL,
     serverSecret: env.SERVER_SECRET,
     tokenExpiryHours: 24,
   },

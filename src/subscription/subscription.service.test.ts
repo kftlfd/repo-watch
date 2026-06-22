@@ -1,6 +1,7 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { SubscriptionsMetrics } from '@/metrics/metrics.js';
 import type { MockLogger } from '@/test/mocks.js';
 import type { TokenUrls } from '@/token/token.service.js';
 import { dbErrors } from '@/db/errors.js';
@@ -22,6 +23,12 @@ import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 import { httpErrors } from '@/utils/errors.js';
 
 import { createSubscriptionService } from './subscription.service.js';
+
+function createMockMetrics() {
+  return {
+    recordAction: vi.fn(),
+  } satisfies SubscriptionsMetrics;
+}
 
 describe('subscription.service', () => {
   const email = 'user@example.com';
@@ -72,6 +79,7 @@ describe('subscription.service', () => {
         getTokenUrls,
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue({ enqueueConfirmationEmail }),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -114,6 +122,7 @@ describe('subscription.service', () => {
       subscriptionRepo: createMockSubscriptionRepo(),
       tokenService: createMockTokenService(),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -133,6 +142,7 @@ describe('subscription.service', () => {
       subscriptionRepo: createMockSubscriptionRepo(),
       tokenService: createMockTokenService(),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -151,6 +161,7 @@ describe('subscription.service', () => {
       subscriptionRepo: createMockSubscriptionRepo(),
       tokenService: createMockTokenService(),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -201,6 +212,7 @@ describe('subscription.service', () => {
         getTokenUrls: vi.fn().mockReturnValue(confirmUrls),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -238,6 +250,7 @@ describe('subscription.service', () => {
       }),
       tokenService: createMockTokenService({ createToken }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue({ enqueueConfirmationEmail }),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -276,6 +289,7 @@ describe('subscription.service', () => {
         getTokenUrls: vi.fn().mockReturnValue(confirmUrls),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -308,6 +322,7 @@ describe('subscription.service', () => {
         createToken: vi.fn().mockRejectedValue(new Error('boom')),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue({ enqueueConfirmationEmail }),
+      metrics: createMockMetrics(),
     });
 
     const result = service.subscribe({ email, repo: repoInput });
@@ -346,6 +361,7 @@ describe('subscription.service', () => {
         deleteToken,
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     await expectOkAsync(service.confirm(confirmToken));
@@ -382,6 +398,7 @@ describe('subscription.service', () => {
         deleteToken,
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const result = service.confirm(confirmToken);
@@ -410,6 +427,7 @@ describe('subscription.service', () => {
         deleteToken,
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     await expectOkAsync(service.unsubscribe('unsubscribe-token'));
@@ -432,6 +450,7 @@ describe('subscription.service', () => {
         validateToken: vi.fn().mockReturnValue(okAsync(tokenRecord)),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     const error = await expectErrAsync(service.unsubscribe('unsubscribe-token'));
@@ -460,6 +479,7 @@ describe('subscription.service', () => {
         deleteToken: vi.fn().mockRejectedValue(new Error('delete failed')),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
+      metrics: createMockMetrics(),
     });
 
     await expectOkAsync(service.confirm(confirmToken));

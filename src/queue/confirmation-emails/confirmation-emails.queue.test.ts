@@ -5,8 +5,8 @@ import type { Email } from '@/email/email.service.js';
 import type { MockLogger } from '@/test/mocks.js';
 import { createMockEmailService, createMockLogger } from '@/test/mocks.js';
 
-import type { ConfirmationEmailJob } from './confirmation-emails.types.js';
-import { createProcessConfirmationEmailJob } from './confirmation-emails.worker.js';
+import type { ConfirmationEmailJob } from './confirmation-emails.queue.js';
+import { createProcessConfirmationEmailJob } from './confirmation-emails.queue.js';
 
 function createJob(overrides?: Partial<{ id: string; data: ConfirmationEmailJob }>) {
   return {

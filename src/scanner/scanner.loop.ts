@@ -15,11 +15,13 @@ export function createFetchWithRetryFn({
   config,
   githubClient,
   onGhFail,
+  onGhRateLimitError,
 }: {
   log: Logger;
   config: ScannerConfig;
   githubClient: GithubClient;
   onGhFail: () => void;
+  onGhRateLimitError: () => void;
 }) {
   /**
    * Keep retrying with exponential backoff on rate-limits until success or non-rate-limit error
@@ -42,6 +44,8 @@ export function createFetchWithRetryFn({
       if (error.type !== 'HttpTooManyRequests') {
         return { type: 'HTTP_ERROR' as const, error };
       }
+
+      onGhRateLimitError();
 
       let retryDelayMs = error.retryAfterSeconds === null ? null : error.retryAfterSeconds * 1_000;
       if (retryDelayMs === null) {
@@ -200,6 +204,9 @@ export function createScannerLoop({
     githubClient,
     onGhFail: () => {
       metrics.totalGithubFailures.inc();
+    },
+    onGhRateLimitError: () => {
+      metrics.totalGithubRateLimitErrors.inc();
     },
   });
 

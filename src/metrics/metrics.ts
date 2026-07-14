@@ -87,6 +87,12 @@ function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
     registers: [registry],
   });
 
+  const totalGithubRateLimitErrors = new Counter({
+    name: `${prefix}_github_rate_limit_errors_total`,
+    help: 'Total Github rate-limit errors',
+    registers: [registry],
+  });
+
   const totalNewReleases = new Counter({
     name: `${prefix}_new_releases_total`,
     help: 'Total new releases detected',
@@ -97,6 +103,7 @@ function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
     totalCycles,
     totalReposProcessed,
     totalGithubFailures,
+    totalGithubRateLimitErrors,
     totalNewReleases,
   };
 }

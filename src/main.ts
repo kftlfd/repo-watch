@@ -12,7 +12,7 @@ async function main() {
 
   const runtimeStatus = createRuntimeStatus();
 
-  const modules = createApp({ config, logger });
+  const modules = createApp({ config, logger, runtimeStatus: runtimeStatus.status });
 
   const runtime = createRuntime({
     config: config.runtime,

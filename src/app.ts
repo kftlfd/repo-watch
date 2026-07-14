@@ -20,12 +20,15 @@ import { createSubscriptionWeb } from '@/subscription/subscription.web.js';
 import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
 
+import type { RuntimeStatus } from './lib/runtime/runtime.js';
+
 type Deps = {
   config: Config;
   logger: Logger;
+  runtimeStatus: RuntimeStatus;
 };
 
-export function createApp({ config, logger }: Deps) {
+export function createApp({ config, logger, runtimeStatus }: Deps) {
   const metrics = createMetrics();
 
   // infra
@@ -114,6 +117,7 @@ export function createApp({ config, logger }: Deps) {
     logger,
     metrics: metrics.server,
     metricsRegistry: metrics.registry,
+    runtimeStatus,
     subscriptionApi,
     subscriptionWeb,
   });

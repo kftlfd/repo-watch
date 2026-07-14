@@ -10,6 +10,7 @@ import {
 } from 'fastify-type-provider-zod';
 
 import type { ServerConfig } from '@/config/config.js';
+import type { RuntimeStatus } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { MetricsRegistry, ServerMetrics } from '@/metrics/metrics.js';
 import { defineModule } from '@/lib/runtime/runtime.js';
@@ -21,6 +22,7 @@ type Deps = {
   logger: Logger;
   metrics: ServerMetrics;
   metricsRegistry: MetricsRegistry;
+  runtimeStatus: RuntimeStatus;
   subscriptionApi: FastifyPluginCallback;
   subscriptionWeb: FastifyPluginCallback;
 };
@@ -30,6 +32,7 @@ export function createFastifyServer({
   logger,
   metrics,
   metricsRegistry,
+  runtimeStatus,
   subscriptionApi,
   subscriptionWeb,
 }: Deps) {
@@ -87,6 +90,18 @@ export function createFastifyServer({
     }
     reply.header('content-type', metricsRegistry.contentType);
     return metricsRegistry.metrics();
+  });
+
+  app.get('/live', (req, reply) => {
+    const status = runtimeStatus.getState();
+    reply.code(status !== 'stopped' ? 200 : 503);
+    return status;
+  });
+
+  app.get('/health', (req, reply) => {
+    const status = runtimeStatus.getState();
+    reply.code(status === 'running' ? 200 : 503);
+    return status;
   });
 
   app.register(formbody);

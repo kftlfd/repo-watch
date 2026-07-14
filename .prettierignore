@@ -2,3 +2,4 @@ src/db/migrations/
 coverage/
 dist/
 monitoring/grafana/dashboards/
+monitoring/grafana/provisioning/alerting/

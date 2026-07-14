@@ -108,6 +108,7 @@ export type Config = {
 };
 
 const hasGithubToken = !!env.GITHUB_TOKEN;
+const isDev = env.NODE_ENV === 'dev';
 
 const defaultConfig: Config = {
   runtime: {
@@ -116,12 +117,12 @@ const defaultConfig: Config = {
   db: {
     url: env.DATABASE_URL,
     migrations: {
-      maxAttempts: 5,
+      maxAttempts: isDev ? 1 : 5,
       retryDelayMs: 2_000,
     },
   },
   server: {
-    host: env.HOST ?? (env.NODE_ENV === 'dev' ? '127.0.0.1' : '0.0.0.0'),
+    host: env.HOST ?? (isDev ? '127.0.0.1' : '0.0.0.0'),
     port: env.PORT ?? 3000,
     metricsApiKey: env.METRICS_API_KEY,
   },

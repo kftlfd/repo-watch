@@ -21,12 +21,13 @@ async function main() {
     runtimeStatus: runtimeStatus.controller,
   });
 
-  process.on('SIGINT', (signal) => {
+  function signalHandler(signal: string) {
     runtime.shutdown(signal);
-  });
-  process.on('SIGTERM', (signal) => {
-    runtime.shutdown(signal);
-  });
+  }
+
+  process.on('SIGINT', signalHandler);
+  process.on('SIGTERM', signalHandler);
+
   process.on('uncaughtException', (err) => {
     runtime.shutdown('unhandled exception', err);
   });
@@ -49,12 +50,25 @@ async function main() {
       errors.push(error);
     });
 
+  let exitErr: Error | null = null;
   if (errors.length > 0) {
-    throw new AggregateError(errors, 'exited with errors');
+    exitErr = new AggregateError(errors, 'exited with errors');
+    logger.error({ err: exitErr }, 'Exit errors');
   }
+
+  await new Promise<void>((resolve, reject) => {
+    logger.flush((err) => {
+      if (err) reject(err);
+      resolve();
+    });
+  });
+
+  process.removeListener('SIGINT', signalHandler);
+  process.removeListener('SIGTERM', signalHandler);
+
+  if (exitErr) throw exitErr;
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exitCode = 1;
+main().catch(() => {
+  process.exit(1);
 });

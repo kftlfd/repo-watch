@@ -1,9 +1,7 @@
 import { createHmac, randomBytes } from 'crypto';
-import { ResultAsync } from 'neverthrow';
 
 import type { TokenServiceConfig } from '@/config/config.js';
-import type { Token, TokenRepo } from '@/token/token.repo.js';
-import type { AppError } from '@/utils/errors.js';
+import type { TokenRepo } from '@/token/token.repo.js';
 
 export type TokenType = 'confirm' | 'unsubscribe';
 
@@ -18,12 +16,7 @@ export type TokenUrls = {
   htmlUrl: string;
 };
 
-export type TokenService = {
-  createToken(options: CreateTokenOptions): Promise<string>;
-  validateToken(token: string, type: TokenType): ResultAsync<Token, AppError>;
-  getTokenUrls(token: string, type: TokenType): TokenUrls;
-  deleteToken(tokenId: number): Promise<void>;
-};
+export type TokenService = ReturnType<typeof createTokenService>;
 
 function generateToken(): string {
   return randomBytes(32).toString('hex');
@@ -34,43 +27,32 @@ type Deps = {
   tokenRepo: TokenRepo;
 };
 
-export function createTokenService({ config, tokenRepo }: Deps): TokenService {
+export function createTokenService({ config, tokenRepo }: Deps) {
   function hashToken(token: string): string {
     return createHmac('sha256', config.serverSecret).update(token).digest('hex');
   }
 
-  async function createToken(options: CreateTokenOptions): Promise<string> {
+  function createToken(options: CreateTokenOptions) {
     const token = generateToken();
     const tokenHash = hashToken(token);
 
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + config.tokenExpiryHours);
 
-    await tokenRepo.create({
-      tokenHash,
-      email: options.email,
-      repositoryId: options.repositoryId,
-      type: options.type,
-      expiresAt,
-    });
-
-    return token;
+    return tokenRepo
+      .create({
+        tokenHash,
+        email: options.email,
+        repositoryId: options.repositoryId,
+        type: options.type,
+        expiresAt,
+      })
+      .map(() => token);
   }
 
-  function validateToken(token: string, type: TokenType): ResultAsync<Token, AppError> {
+  function validateToken(token: string, type: TokenType) {
     const tokenHash = hashToken(token);
-
-    return tokenRepo.getValidByHashAndType(tokenHash, type).mapErr((e): AppError => {
-      switch (e.type) {
-        case 'DBError':
-          return { type: 'Internal', message: 'DB error' };
-        case 'DBNotFound':
-          return { type: 'NotFound', message: 'Invalid or expired token' };
-        default:
-          e satisfies never;
-          throw new Error('unhandled Err Result');
-      }
-    });
+    return tokenRepo.getValidByHashAndType(tokenHash, type);
   }
 
   function getTokenUrls(token: string, type: TokenType): TokenUrls {
@@ -82,8 +64,8 @@ export function createTokenService({ config, tokenRepo }: Deps): TokenService {
     };
   }
 
-  async function deleteToken(tokenId: number): Promise<void> {
-    await tokenRepo.deleteById(tokenId);
+  function deleteToken(tokenId: number) {
+    return tokenRepo.deleteById(tokenId);
   }
 
   return {

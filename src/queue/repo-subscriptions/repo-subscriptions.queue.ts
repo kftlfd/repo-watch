@@ -93,11 +93,17 @@ export function createProcessRepoSubscriptionJob({
     let total = 0;
 
     while (true) {
-      const subscriptionsBatch = await subscriptionRepo.getConfirmedByRepositoryIdBatch(
+      const subscriptionsBatchResult = await subscriptionRepo.getConfirmedByRepositoryIdBatch(
         repoId,
         cursor,
         config.batchSize,
       );
+
+      if (subscriptionsBatchResult.isErr()) {
+        throw new Error('Subs batch error', { cause: subscriptionsBatchResult.error });
+      }
+
+      const subscriptionsBatch = subscriptionsBatchResult.value;
 
       if (subscriptionsBatch.length < 1) {
         if (cursor === -1) {

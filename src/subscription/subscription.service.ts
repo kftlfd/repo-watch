@@ -44,12 +44,12 @@ export function createSubscriptionService({
       if (e.type === 'HTTP_ERROR') {
         switch (e.error.type) {
           case 'HttpTooManyRequests':
-            return 'GH_RATE_LIMITED';
+            return { type: 'GH_RATE_LIMITED' as const };
           case 'HttpNotFound':
-            return 'GH_NOT_FOUND';
+            return { type: 'GH_NOT_FOUND' as const };
         }
       }
-      return 'GH_ERROR';
+      return { type: 'GH_ERROR' as const, cause: e };
     });
   }
 
@@ -89,7 +89,7 @@ export function createSubscriptionService({
   function checkOrCreateSub(email: string, repoId: number) {
     return subscriptionRepo
       .findActiveByEmailAndRepoId(email, repoId)
-      .andThen((sub) => (sub.confirmedAt ? err('ALREADY_SUBSCRIBED' as const) : ok(sub)))
+      .andThen((sub) => (sub.confirmedAt ? err({ type: 'ALREADY_SUBSCRIBED' as const }) : ok(sub)))
       .orElse((e) => {
         if (typeof e === 'object' && e.type === 'DBNotFound') {
           return subscriptionRepo.create({ email, repositoryId: repoId });
@@ -119,7 +119,7 @@ export function createSubscriptionService({
         confirmHtmlUrl,
         confirmApiUrl,
       }),
-      () => 'ENQUEUE_EMAIL_ERROR' as const,
+      () => ({ type: 'ENQUEUE_EMAIL_ERROR' as const }),
     );
   }
 

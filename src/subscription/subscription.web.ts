@@ -61,17 +61,17 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
           (error) => {
             req.log.error({ error: error });
 
-            if (error === 'GH_NOT_FOUND') {
+            if (error.type === 'GH_NOT_FOUND') {
               return reply.code(httpStatus.NotFound).send(renderSubscribeError('Not found'));
             }
 
-            if (error === 'ALREADY_SUBSCRIBED') {
+            if (error.type === 'ALREADY_SUBSCRIBED') {
               return reply
                 .code(httpStatus.Conflict)
                 .send(renderSubscribeError('Already subscribed'));
             }
 
-            if (error === 'GH_ERROR' || error === 'GH_RATE_LIMITED') {
+            if (error.type === 'GH_ERROR' || error.type === 'GH_RATE_LIMITED') {
               return reply
                 .code(httpStatus.Unavailable)
                 .send(renderSubscribeError('Error. Please try again later'));

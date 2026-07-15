@@ -41,14 +41,15 @@ export function createSubscriptionService({
 
   function verifyRepoExists(owner: string, name: string) {
     return githubClient.getRepo(owner, name).mapErr((e) => {
-      switch (e.type) {
-        case 'HttpTooManyRequests':
-          return 'GH_RATE_LIMITED';
-        case 'HttpNotFound':
-          return 'GH_NOT_FOUND';
-        default:
-          return 'GH_ERROR';
+      if (e.type === 'HTTP_ERROR') {
+        switch (e.error.type) {
+          case 'HttpTooManyRequests':
+            return 'GH_RATE_LIMITED';
+          case 'HttpNotFound':
+            return 'GH_NOT_FOUND';
+        }
       }
+      return 'GH_ERROR';
     });
   }
 

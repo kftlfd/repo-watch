@@ -31,11 +31,27 @@ export function createGithubClient({ config, metrics }: Deps) {
   function httpGet<TSchema extends ZodType>(
     url: string,
     bodySchema: TSchema,
-  ): ResultAsync<z.infer<TSchema>, HttpNetworkError | HttpRequestError | HttpBadResponseError> {
-    const response = ResultAsync.fromPromise(
-      fetch(url, { headers: getHeaders(), signal: AbortSignal.timeout(config.timeoutMs) }),
-      (e) => httpErrors.NetworkError(e),
-    );
+    abortSignal?: AbortSignal,
+  ): ResultAsync<
+    z.infer<TSchema>,
+    | { type: 'ABORTED' }
+    | { type: 'TIMEOUT' }
+    | { type: 'HTTP_ERROR'; error: HttpNetworkError | HttpRequestError | HttpBadResponseError }
+  > {
+    const timeoutSignal = AbortSignal.timeout(config.timeoutMs);
+    const signal = abortSignal ? AbortSignal.any([abortSignal, timeoutSignal]) : timeoutSignal;
+
+    const request = fetch(url, { headers: getHeaders(), signal });
+
+    const response = ResultAsync.fromPromise(request, (e) => {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return { type: 'ABORTED' as const };
+      }
+      if (e instanceof Error && e.name === 'TimeoutError') {
+        return { type: 'TIMEOUT' as const };
+      }
+      return httpErrors.NetworkError(e);
+    });
 
     const checked = response.andThen((resp) => (resp.ok ? ok(resp) : mapResponseToError(resp)));
 
@@ -50,38 +66,51 @@ export function createGithubClient({ config, metrics }: Deps) {
         : err(httpErrors.BadResponse('Failed to validate body'));
     });
 
-    return parsedBody.orTee((error) => {
-      metrics.totalErrors.inc();
-      if (error.type === 'HttpTooManyRequests') {
-        metrics.totalRateLimitErrors.inc();
-      }
+    return parsedBody
+      .orTee((error) => {
+        metrics.onError();
+        if (error.type === 'HttpTooManyRequests') {
+          metrics.onRateLimitError();
+        }
+      })
+      .mapErr((e) => {
+        if (e.type !== 'ABORTED' && e.type !== 'TIMEOUT') {
+          return { type: 'HTTP_ERROR', error: e };
+        }
+        return e;
+      });
+  }
+
+  function getRepo(owner: string, repo: string, signal?: AbortSignal) {
+    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}`, RepoResponseSchema, signal).map(
+      toRepo,
+    );
+  }
+
+  function getLatestReleaseTag(owner: string, repo: string, signal?: AbortSignal) {
+    return httpGet(
+      `${config.baseUrl}/repos/${owner}/${repo}/releases/latest`,
+      ReleaseSchema,
+      signal,
+    ).map((data) => data.tag_name);
+  }
+
+  function getLatestTag(owner: string, repo: string, signal?: AbortSignal) {
+    return httpGet(
+      `${config.baseUrl}/repos/${owner}/${repo}/tags`,
+      z.array(TagSchema),
+      signal,
+    ).andThen((data) => {
+      const tagValue = data[0]?.name;
+      return tagValue ? ok(tagValue) : err({ type: 'NO_LATEST_TAG' as const });
     });
   }
 
-  function getRepo(owner: string, repo: string) {
-    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}`, RepoResponseSchema).map(toRepo);
-  }
-
-  function getLatestReleaseTag(owner: string, repo: string) {
-    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}/releases/latest`, ReleaseSchema).map(
-      (data) => data.tag_name,
-    );
-  }
-
-  function getLatestTag(owner: string, repo: string) {
-    return httpGet(`${config.baseUrl}/repos/${owner}/${repo}/tags`, z.array(TagSchema)).andThen(
-      (data) => {
-        const tagValue = data[0]?.name;
-        return tagValue
-          ? ok(tagValue)
-          : err(httpErrors.NotFound(`No tags found for ${owner}/${repo}`));
-      },
-    );
-  }
-
-  function getLatestRelease(owner: string, repo: string) {
-    return getLatestReleaseTag(owner, repo).orElse((error) =>
-      error.type === 'HttpNotFound' ? getLatestTag(owner, repo) : err(error),
+  function getLatestRelease(owner: string, repo: string, signal?: AbortSignal) {
+    return getLatestReleaseTag(owner, repo, signal).orElse((error) =>
+      error.type === 'HTTP_ERROR' && error.error.type === 'HttpNotFound'
+        ? getLatestTag(owner, repo, signal)
+        : err(error),
     );
   }
 

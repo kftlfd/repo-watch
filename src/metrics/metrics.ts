@@ -82,7 +82,15 @@ function createGithubMetrics(registry: MetricsRegistry, prefix = 'github') {
     registers: [registry],
   });
 
-  return { totalErrors, totalRateLimitErrors };
+  function onError() {
+    totalErrors.inc();
+  }
+
+  function onRateLimitError() {
+    totalRateLimitErrors.inc();
+  }
+
+  return { onError, onRateLimitError };
 }
 
 function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {

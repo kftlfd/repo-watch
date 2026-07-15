@@ -10,6 +10,12 @@ export const SubscribeInputSchema = z.object({
 
 export type SubscribeInput = z.infer<typeof SubscribeInputSchema>;
 
+export const ApiOkScheme = z.object({
+  message: z.string(),
+});
+
 export const ApiErrorSchema = z.object({
   message: z.string(),
 });
+
+export const HtmlResponseScheme = z.string();

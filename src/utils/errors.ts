@@ -22,6 +22,16 @@ export type AppError =
       retryAfterSeconds: number | null;
     };
 
+export const httpStatus = {
+  Ok: 200,
+  BadRequest: 400,
+  NotFound: 404,
+  Conflict: 409,
+  TooManyRequests: 429,
+  InternalServerError: 500,
+  Unavailable: 503,
+} as const;
+
 export function mapErrorToHttp(error: AppError): number {
   switch (error.type) {
     case 'Validation':

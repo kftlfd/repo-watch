@@ -7,6 +7,7 @@ export type MetricsRegistry = Registry;
 export type MetricsService = ReturnType<typeof createMetrics>;
 export type ServerMetrics = MetricsService['server'];
 export type SubscriptionsMetrics = MetricsService['subscriptions'];
+export type GithubMetrics = MetricsService['github'];
 export type ScannerMetrics = MetricsService['scanner'];
 export type QueueMetrics = MetricsService['queue'];
 export type EmailsMetrics = MetricsService['emails'];
@@ -25,6 +26,7 @@ export function createMetrics() {
     registry,
     server: createServerMetrics(registry),
     subscriptions: createSubsriptionsMetrics(registry),
+    github: createGithubMetrics(registry),
     scanner: createScannerMetrics(registry),
     queue: createQueueMetrics(registry),
     emails: createEmailMetrics(registry),
@@ -67,6 +69,22 @@ function createSubsriptionsMetrics(registry: MetricsRegistry, prefix = 'subscrip
   return { recordAction };
 }
 
+function createGithubMetrics(registry: MetricsRegistry, prefix = 'github') {
+  const totalErrors = new Counter({
+    name: `${prefix}_errors_total`,
+    help: 'Total Github errors',
+    registers: [registry],
+  });
+
+  const totalRateLimitErrors = new Counter({
+    name: `${prefix}_rate_limit_errors_total`,
+    help: 'Total Github rate-limit errors',
+    registers: [registry],
+  });
+
+  return { totalErrors, totalRateLimitErrors };
+}
+
 function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
   const totalCycles = new Counter({
     name: `${prefix}_scan_cycles_total`,
@@ -81,18 +99,6 @@ function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
     registers: [registry],
   });
 
-  const totalGithubFailures = new Counter({
-    name: `${prefix}_github_failures_total`,
-    help: 'Total Github failures',
-    registers: [registry],
-  });
-
-  const totalGithubRateLimitErrors = new Counter({
-    name: `${prefix}_github_rate_limit_errors_total`,
-    help: 'Total Github rate-limit errors',
-    registers: [registry],
-  });
-
   const totalNewReleases = new Counter({
     name: `${prefix}_new_releases_total`,
     help: 'Total new releases detected',
@@ -102,8 +108,6 @@ function createScannerMetrics(registry: MetricsRegistry, prefix = 'scanner') {
   return {
     totalCycles,
     totalReposProcessed,
-    totalGithubFailures,
-    totalGithubRateLimitErrors,
     totalNewReleases,
   };
 }

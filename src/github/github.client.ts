@@ -2,6 +2,7 @@ import { err, ok, ResultAsync } from 'neverthrow';
 import { z, ZodType } from 'zod';
 
 import type { GithubClientConfig } from '@/config/config.js';
+import type { GithubMetrics } from '@/metrics/metrics.js';
 import type { HttpBadResponseError, HttpNetworkError } from '@/utils/errors.js';
 import { httpErrors } from '@/utils/errors.js';
 
@@ -11,7 +12,12 @@ import { mapResponseToError } from './utils.js';
 
 export type GithubClient = ReturnType<typeof createGithubClient>;
 
-export function createGithubClient(config: GithubClientConfig) {
+type Deps = {
+  config: GithubClientConfig;
+  metrics: GithubMetrics;
+};
+
+export function createGithubClient({ config, metrics }: Deps) {
   function getHeaders() {
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -44,7 +50,12 @@ export function createGithubClient(config: GithubClientConfig) {
         : err(httpErrors.BadResponse('Failed to validate body'));
     });
 
-    return parsedBody;
+    return parsedBody.orTee((error) => {
+      metrics.totalErrors.inc();
+      if (error.type === 'HttpTooManyRequests') {
+        metrics.totalRateLimitErrors.inc();
+      }
+    });
   }
 
   function getRepo(owner: string, repo: string) {

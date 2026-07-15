@@ -37,7 +37,7 @@ export function createApp({ config, logger, runtimeStatus }: Deps) {
   const cache = createRedisCache(redis);
 
   // clients
-  const ghClient = createGithubClient(config.githubClient);
+  const ghClient = createGithubClient({ config: config.githubClient, metrics: metrics.github });
   const cachedGhClient = createCachedGithubClient({
     config: config.githubClient,
     base: ghClient,

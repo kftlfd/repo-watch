@@ -55,8 +55,6 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
-        onGhFail: vi.fn(),
-        onGhRateLimitError: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo');
@@ -78,8 +76,6 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
-        onGhFail: vi.fn(),
-        onGhRateLimitError: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo');
@@ -100,8 +96,6 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
-        onGhFail: vi.fn(),
-        onGhRateLimitError: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo');
@@ -121,8 +115,6 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
-        onGhFail: vi.fn(),
-        onGhRateLimitError: vi.fn(),
       });
 
       const controller = new AbortController();
@@ -269,8 +261,6 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
-        onGhFail: vi.fn(),
-        onGhRateLimitError: vi.fn(),
       });
 
       const controller = new AbortController();
@@ -299,8 +289,6 @@ describe('scanner.loop', () => {
         log: logger,
         config: scannerConfig,
         githubClient,
-        onGhFail: vi.fn(),
-        onGhRateLimitError: vi.fn(),
       });
 
       const result = await fetchWithRetry('owner', 'repo', controller.signal);

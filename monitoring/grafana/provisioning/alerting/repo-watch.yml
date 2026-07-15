@@ -16,7 +16,7 @@ groups:
               datasourceUid: PBFA97CFB590B2093
               model:
                 editorMode: builder
-                expr: increase(scanner_github_rate_limit_errors_total[$__rate_interval])
+                expr: increase(github_rate_limit_errors_total[$__rate_interval])
                 instant: true
                 intervalMs: 1000
                 legendFormat: __auto

@@ -4,22 +4,20 @@
   "metadata": {
     "name": "adrspg4",
     "namespace": "default",
-    "uid": "69669088-7e53-4845-a77f-9d78c7296a49",
-    "resourceVersion": "1784049765806003",
-    "generation": 2,
-    "creationTimestamp": "2026-06-22T13:23:52Z",
+    "uid": "bd2960eb-7700-417f-a409-b3b1baf5f693",
+    "resourceVersion": "1784052012645998",
+    "generation": 1,
+    "creationTimestamp": "2026-07-14T18:00:12Z",
     "labels": {
-      "grafana.app/deprecatedInternalID": "1896500769902592"
+      "grafana.app/deprecatedInternalID": "931375080108032"
     },
     "annotations": {
       "grafana.app/createdBy": "access-policy:service",
       "grafana.app/managedBy": "classic-file-provisioning",
       "grafana.app/managerId": "default",
-      "grafana.app/sourceChecksum": "34681a445a3a0c48399a104f6c7daf41",
+      "grafana.app/sourceChecksum": "cfab62a47ac4cc681ad0d7fac3190f27",
       "grafana.app/sourcePath": "/etc/grafana/dashboards/repo-watch.json",
-      "grafana.app/sourceTimestamp": "1784049760000",
-      "grafana.app/updatedBy": "access-policy:service",
-      "grafana.app/updatedTimestamp": "2026-07-14T17:22:45Z",
+      "grafana.app/sourceTimestamp": "1784050540000",
       "grafana.app/folder": ""
     }
   },
@@ -538,7 +536,7 @@
                       "kind": "DataQuery",
                       "spec": {
                         "editorMode": "builder",
-                        "expr": "increase(scanner_github_failures_total[$__rate_interval])",
+                        "expr": "increase(github_errors_total[$__rate_interval])",
                         "legendFormat": "__auto",
                         "range": true
                       },
@@ -656,7 +654,7 @@
                       "kind": "DataQuery",
                       "spec": {
                         "editorMode": "builder",
-                        "expr": "increase(scanner_github_rate_limit_errors_total[$__rate_interval])",
+                        "expr": "increase(github_rate_limit_errors_total[$__rate_interval])",
                         "legendFormat": "__auto",
                         "range": true
                       },

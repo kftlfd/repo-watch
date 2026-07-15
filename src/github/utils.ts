@@ -5,8 +5,8 @@ import type {
   HttpTooManyRequestsError,
   HttpUnautorizedError,
   HttpUnknownError,
-} from '@/utils/errors.js';
-import { httpErrors } from '@/utils/errors.js';
+} from '@/utils/html.js';
+import { httpErrors } from '@/utils/html.js';
 
 function parseRetryAfterSeconds(header: string | null | undefined) {
   if (!header) return null;

@@ -3,8 +3,8 @@ import { z, ZodType } from 'zod';
 
 import type { GithubClientConfig } from '@/config/config.js';
 import type { GithubMetrics } from '@/metrics/metrics.js';
-import type { HttpBadResponseError, HttpNetworkError } from '@/utils/errors.js';
-import { httpErrors } from '@/utils/errors.js';
+import type { HttpBadResponseError, HttpNetworkError } from '@/utils/html.js';
+import { httpErrors } from '@/utils/html.js';
 
 import type { HttpRequestError } from './utils.js';
 import { ReleaseSchema, RepoResponseSchema, TagSchema, toRepo } from './github.schema.js';

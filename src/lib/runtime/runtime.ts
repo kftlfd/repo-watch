@@ -92,7 +92,7 @@ type RuntimeStatusController = {
   setState(state: RuntimeState): void;
 };
 
-type RuntimeStatus = {
+export type RuntimeStatus = {
   getState(): RuntimeState;
 };
 

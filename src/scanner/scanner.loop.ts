@@ -14,12 +14,10 @@ export function createFetchWithRetryFn({
   log,
   config,
   githubClient,
-  onGhFail,
 }: {
   log: Logger;
   config: ScannerConfig;
   githubClient: GithubClient;
-  onGhFail: () => void;
 }) {
   /**
    * Keep retrying with exponential backoff on rate-limits until success or non-rate-limit error
@@ -30,20 +28,26 @@ export function createFetchWithRetryFn({
     while (true) {
       if (signal?.aborted) return { type: 'ABORTED' as const };
 
-      const result = await githubClient.getLatestRelease(owner, name);
+      const result = await githubClient.getLatestRelease(owner, name, signal);
 
       if (result.isOk()) {
         return { type: 'OK' as const, tag: result.value };
       }
 
-      onGhFail();
-
       const error = result.error;
-      if (error.type !== 'HttpTooManyRequests') {
-        return { type: 'HTTP_ERROR' as const, error };
+
+      if (error.type !== 'HTTP_ERROR') {
+        return error;
       }
 
-      let retryDelayMs = error.retryAfterSeconds === null ? null : error.retryAfterSeconds * 1_000;
+      const httpErr = error.error;
+
+      if (httpErr.type !== 'HttpTooManyRequests') {
+        return { type: 'HTTP_ERROR' as const, error: httpErr };
+      }
+
+      let retryDelayMs =
+        httpErr.retryAfterSeconds === null ? null : httpErr.retryAfterSeconds * 1_000;
       if (retryDelayMs === null) {
         retryDelayMs = Math.ceil(Math.random() * delayMs); // backoff jitter
         delayMs *= 2;
@@ -62,7 +66,9 @@ export function createFetchWithRetryFn({
         case 'OK':
           return ok(res.tag);
         case 'ABORTED':
-          return err({ type: 'ABORTED' as const });
+        case 'TIMEOUT':
+        case 'NO_LATEST_TAG':
+          return err({ type: res.type });
         case 'HTTP_ERROR':
           return err({ type: 'HTTP_ERROR' as const, error: res.error });
         default:
@@ -198,9 +204,6 @@ export function createScannerLoop({
     log,
     config,
     githubClient,
-    onGhFail: () => {
-      metrics.totalGithubFailures.inc();
-    },
   });
 
   const processRepository = createProcessRepositoryFn({

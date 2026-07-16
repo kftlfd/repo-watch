@@ -59,7 +59,7 @@ describe('github.cached', () => {
     const result = await expectOkAsync(client.getRepo('owner', 'repo'));
 
     expect(result).toEqual(repo);
-    expect(baseGetRepo).toHaveBeenCalledWith('owner', 'repo');
+    expect(baseGetRepo).toHaveBeenCalledWith('owner', 'repo', undefined);
     expect(set).toHaveBeenCalledWith('gh-http:getRepo:owner/repo', JSON.stringify(repo), 600);
   });
 
@@ -78,7 +78,7 @@ describe('github.cached', () => {
     const result = await expectOkAsync(client.getRepo('owner', 'repo'));
 
     expect(result).toEqual(repo);
-    expect(baseGetRepo).toHaveBeenCalledWith('owner', 'repo');
+    expect(baseGetRepo).toHaveBeenCalledWith('owner', 'repo', undefined);
   });
 
   it('does not cache failed base responses', async () => {
@@ -124,7 +124,7 @@ describe('github.cached', () => {
     const missResult = await expectOkAsync(missClient.getLatestRelease('owner', 'repo'));
 
     expect(missResult).toBe('v2.0.0');
-    expect(baseGetLatestRelease).toHaveBeenCalledWith('owner', 'repo');
+    expect(baseGetLatestRelease).toHaveBeenCalledWith('owner', 'repo', undefined);
     expect(set).toHaveBeenCalledWith('gh-http:getLatestRelease:owner/repo', 'v2.0.0', 600);
   });
 });

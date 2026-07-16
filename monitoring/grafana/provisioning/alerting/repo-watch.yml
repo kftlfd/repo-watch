@@ -1,0 +1,58 @@
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: default
+      folder: repo-watch-alerts
+      interval: 1m
+      rules:
+        - uid: dfs3tpmyay1vkd
+          title: GitHub rate limits
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: PBFA97CFB590B2093
+              model:
+                editorMode: builder
+                expr: increase(github_rate_limit_errors_total[$__rate_interval])
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 3
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          annotations:
+            summary: GitHub requests are rate limited
+          isPaused: false
+          notification_settings:
+            receiver: empty

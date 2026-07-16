@@ -1,11 +1,11 @@
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import z from 'zod';
 
-import { mapErrorToHttp } from '@/utils/errors.js';
+import { httpStatus } from '@/utils/html.js';
 import { OpenApiTag } from '@/utils/openapi.js';
 
 import type { SubscriptionService } from './subscription.service.js';
-import { SubscribeInputSchema } from './subscription.schema.js';
+import { HtmlResponseScheme, SubscribeInputSchema } from './subscription.schema.js';
 import {
   renderConfirmError,
   renderConfirmSuccess,
@@ -27,6 +27,11 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
       {
         schema: {
           tags: [OpenApiTag.Web],
+          consumes: [],
+          produces: ['text/html'],
+          response: {
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Home page' }),
+          },
         },
       },
       async (_req, reply) => {
@@ -40,17 +45,50 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
         schema: {
           tags: [OpenApiTag.Web],
           body: SubscribeInputSchema,
+          consumes: ['multipart/form-data', 'application/x-www-form-urlencoded'],
+          produces: ['text/html'],
+          response: {
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Subscribe form' }),
+            [httpStatus.BadRequest]: HtmlResponseScheme.meta({ description: 'Invalid inputs' }),
+            [httpStatus.NotFound]: HtmlResponseScheme.meta({ description: 'Repo not found' }),
+            [httpStatus.Conflict]: HtmlResponseScheme.meta({
+              description: 'Active subscription for email+repo already exists',
+            }),
+            [httpStatus.InternalServerError]: HtmlResponseScheme.meta({
+              description: 'Server error',
+            }),
+            [httpStatus.Unavailable]: HtmlResponseScheme.meta({ description: 'Upstream error' }),
+          },
         },
       },
       async (req, reply) => {
-        const result = await subscriptionService.subscribe(req.body);
-
-        return result.match(
-          () => reply.type('text/html').send(renderSubscribeSuccess()),
+        reply.type('text/html');
+        await subscriptionService.subscribe(req.body).match(
+          () => {
+            return reply.code(httpStatus.Ok).send(renderSubscribeSuccess());
+          },
           (error) => {
-            const statusCode = mapErrorToHttp(error);
-            const message = error.message || 'Something went wrong';
-            return reply.code(statusCode).type('text/html').send(renderSubscribeError(message));
+            req.log.error({ error: error });
+
+            if (error.type === 'GH_NOT_FOUND') {
+              return reply.code(httpStatus.NotFound).send(renderSubscribeError('Not found'));
+            }
+
+            if (error.type === 'ALREADY_SUBSCRIBED') {
+              return reply
+                .code(httpStatus.Conflict)
+                .send(renderSubscribeError('Already subscribed'));
+            }
+
+            if (error.type === 'GH_ERROR' || error.type === 'GH_RATE_LIMITED') {
+              return reply
+                .code(httpStatus.Unavailable)
+                .send(renderSubscribeError('Error. Please try again later'));
+            }
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send(renderSubscribeError('Internal server error. Please try again later'));
           },
         );
       },
@@ -64,18 +102,36 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
           params: z.object({
             token: z.string().min(10),
           }),
+          consumes: [],
+          produces: ['text/html'],
+          response: {
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Subscription confirmed' }),
+            [httpStatus.BadRequest]: HtmlResponseScheme.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: HtmlResponseScheme.meta({
+              description: 'Server error',
+            }),
+          },
         },
       },
       async (req, reply) => {
         const { token } = req.params;
-
-        const result = await subscriptionService.confirm(token);
-
-        return result.match(
-          () => reply.type('text/html').send(renderConfirmSuccess()),
+        reply.type('text/html');
+        await subscriptionService.confirm(token).match(
+          () => {
+            return reply.code(httpStatus.Ok).send(renderConfirmSuccess());
+          },
           (error) => {
-            const message = error.message || 'Invalid or expired confirmation link';
-            return reply.code(400).type('text/html').send(renderConfirmError(message));
+            req.log.error({ error });
+
+            if (error.type === 'DBNotFound') {
+              return reply
+                .code(httpStatus.BadRequest)
+                .send(renderConfirmError('Invalid or expired confirmation link'));
+            }
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send(renderConfirmError('Internal server error. Please try again later'));
           },
         );
       },
@@ -89,18 +145,36 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
           params: z.object({
             token: z.string().min(10),
           }),
+          consumes: [],
+          produces: ['text/html'],
+          response: {
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Unsubscribed' }),
+            [httpStatus.BadRequest]: HtmlResponseScheme.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: HtmlResponseScheme.meta({
+              description: 'Server error',
+            }),
+          },
         },
       },
       async (req, reply) => {
         const { token } = req.params;
-
-        const result = await subscriptionService.unsubscribe(token);
-
-        return result.match(
-          () => reply.type('text/html').send(renderUnsubscribeSuccess()),
+        reply.type('text/html');
+        await subscriptionService.unsubscribe(token).match(
+          () => {
+            return reply.code(httpStatus.Ok).send(renderUnsubscribeSuccess());
+          },
           (error) => {
-            const message = error.message || 'Invalid or expired link';
-            return reply.code(400).type('text/html').send(renderUnsubscribeError(message));
+            req.log.error({ error });
+
+            if (error.type === 'DBNotFound') {
+              return reply
+                .code(httpStatus.BadRequest)
+                .send(renderUnsubscribeError('Invalid or expired link'));
+            }
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send(renderUnsubscribeError('Internal server error. Please try again later'));
           },
         );
       },

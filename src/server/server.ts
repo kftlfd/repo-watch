@@ -5,11 +5,13 @@ import scalarApiReference from '@scalar/fastify-api-reference';
 import Fastify from 'fastify';
 import {
   jsonSchemaTransform,
+  jsonSchemaTransformObject,
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
 
 import type { ServerConfig } from '@/config/config.js';
+import type { RuntimeStatus } from '@/lib/runtime/runtime.js';
 import type { Logger } from '@/logger/logger.js';
 import type { MetricsRegistry, ServerMetrics } from '@/metrics/metrics.js';
 import { defineModule } from '@/lib/runtime/runtime.js';
@@ -21,6 +23,7 @@ type Deps = {
   logger: Logger;
   metrics: ServerMetrics;
   metricsRegistry: MetricsRegistry;
+  runtimeStatus: RuntimeStatus;
   subscriptionApi: FastifyPluginCallback;
   subscriptionWeb: FastifyPluginCallback;
 };
@@ -30,6 +33,7 @@ export function createFastifyServer({
   logger,
   metrics,
   metricsRegistry,
+  runtimeStatus,
   subscriptionApi,
   subscriptionWeb,
 }: Deps) {
@@ -68,6 +72,7 @@ export function createFastifyServer({
       },
     },
     transform: jsonSchemaTransform,
+    transformObject: jsonSchemaTransformObject,
   });
 
   app.register(scalarApiReference, {
@@ -80,13 +85,33 @@ export function createFastifyServer({
     },
   });
 
-  app.get('/metrics', (req, reply) => {
-    if (req.headers.authorization !== `Bearer ${config.metricsApiKey}`) {
-      reply.callNotFound();
-      return;
-    }
-    reply.header('content-type', metricsRegistry.contentType);
-    return metricsRegistry.metrics();
+  app.register((adminRoutes, opts, done) => {
+    adminRoutes.addHook('onRequest', (req, reply, done) => {
+      if (req.headers.authorization !== `Bearer ${config.adminApiKey}`) {
+        reply.callNotFound();
+        return;
+      }
+      done();
+    });
+
+    adminRoutes.get('/metrics', { schema: { hide: true } }, (req, reply) => {
+      reply.header('content-type', metricsRegistry.contentType);
+      return metricsRegistry.metrics();
+    });
+
+    adminRoutes.get('/live', { schema: { hide: true } }, (req, reply) => {
+      const status = runtimeStatus.getState();
+      reply.code(status !== 'stopped' ? 200 : 503);
+      return status;
+    });
+
+    adminRoutes.get('/health', { schema: { hide: true } }, (req, reply) => {
+      const status = runtimeStatus.getState();
+      reply.code(status === 'running' ? 200 : 503);
+      return status;
+    });
+
+    done();
   });
 
   app.register(formbody);

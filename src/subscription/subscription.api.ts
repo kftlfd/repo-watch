@@ -1,10 +1,11 @@
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import z from 'zod';
 
+import { httpStatus } from '@/utils/html.js';
 import { OpenApiTag } from '@/utils/openapi.js';
 
 import type { SubscriptionService } from './subscription.service.js';
-import { ApiErrorSchema, SubscribeInputSchema } from './subscription.schema.js';
+import { ApiErrorSchema, ApiOkScheme, SubscribeInputSchema } from './subscription.schema.js';
 
 type Deps = {
   subscriptionService: SubscriptionService;
@@ -20,51 +21,45 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
           consumes: ['application/json', 'application/x-www-form-urlencoded'],
           body: SubscribeInputSchema,
           response: {
-            200: z.object({ message: z.string() }),
-            400: ApiErrorSchema,
-            404: ApiErrorSchema,
-            409: ApiErrorSchema,
-            500: ApiErrorSchema,
-            502: ApiErrorSchema,
-            503: ApiErrorSchema,
+            [httpStatus.Ok]: ApiOkScheme.meta({
+              description: 'Subscribed, confirmation email sent',
+            }),
+            [httpStatus.NotFound]: ApiErrorSchema.meta({ description: 'Repo not found' }),
+            [httpStatus.Conflict]: ApiErrorSchema.meta({
+              description: 'Active subscription for email+repo already exist',
+            }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
+            [httpStatus.Unavailable]: ApiErrorSchema.meta({ description: 'Upstream error' }),
           },
         },
       },
       async (req, reply) => {
-        const result = await subscriptionService.subscribe(req.body);
-
-        return result.match(
+        await subscriptionService.subscribe(req.body).match(
           () => {
             return reply
-              .code(200)
+              .code(httpStatus.Ok)
               .send({ message: 'Subscription successful. Confirmation email sent.' });
           },
-
           (error) => {
-            req.log.error({ error }, 'Subscription service error');
-            switch (error.type) {
-              case 'Validation': {
-                return reply.code(400).send({ message: error.message });
-              }
-              case 'NotFound': {
-                return reply.code(404).send({ message: error.message });
-              }
-              case 'Conflict': {
-                return reply.code(409).send({ message: error.message });
-              }
-              case 'External': {
-                return reply.code(502).send({ message: error.message });
-              }
-              case 'RateLimited': {
-                const retryAfter = error.retryAfterSeconds?.toString();
-                if (retryAfter) {
-                  reply.header('Retry-After', retryAfter);
-                }
-                return reply.code(503).send({ message: error.message });
-              }
-              default:
-                return reply.code(500).send({ message: error.message });
+            req.log.error({ error }, 'Subscribe error');
+
+            if (error.type === 'GH_NOT_FOUND') {
+              return reply.code(httpStatus.NotFound).send({ message: 'Not found' });
             }
+
+            if (error.type === 'ALREADY_SUBSCRIBED') {
+              return reply.code(httpStatus.Conflict).send({ message: 'Already subscribed' });
+            }
+
+            if (error.type === 'GH_ERROR' || error.type === 'GH_RATE_LIMITED') {
+              return reply
+                .code(httpStatus.Unavailable)
+                .send({ message: 'Error. Please try again later' });
+            }
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send({ message: 'Internal server error. Please try again later' });
           },
         );
       },
@@ -79,51 +74,32 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
             token: z.string().min(10),
           }),
           response: {
-            200: z.object({ message: z.string() }),
-            400: ApiErrorSchema,
-            404: ApiErrorSchema,
-            409: ApiErrorSchema,
-            500: ApiErrorSchema,
-            502: ApiErrorSchema,
-            503: ApiErrorSchema,
+            [httpStatus.Ok]: ApiOkScheme.meta({ description: 'Subscription confirmed' }),
+            [httpStatus.BadRequest]: ApiErrorSchema.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
           },
         },
       },
       async (req, reply) => {
         const { token } = req.params;
-
-        const result = await subscriptionService.confirm(token);
-
-        return result.match(
+        await subscriptionService.confirm(token).match(
           () => {
-            return reply.code(200).send({ message: 'Subscription confirmed successfully.' });
+            return reply
+              .code(httpStatus.Ok)
+              .send({ message: 'Subscription confirmed successfully.' });
           },
-
           (error) => {
-            req.log.error({ error }, 'Confirm service error');
-            switch (error.type) {
-              case 'Validation': {
-                return reply.code(400).send({ message: error.message });
-              }
-              case 'NotFound': {
-                return reply.code(404).send({ message: error.message });
-              }
-              case 'Conflict': {
-                return reply.code(409).send({ message: error.message });
-              }
-              case 'External': {
-                return reply.code(502).send({ message: error.message });
-              }
-              case 'RateLimited': {
-                const retryAfter = error.retryAfterSeconds?.toString();
-                if (retryAfter) {
-                  reply.header('Retry-After', retryAfter);
-                }
-                return reply.code(503).send({ message: error.message });
-              }
-              default:
-                return reply.code(500).send({ message: error.message });
+            req.log.error({ error }, 'Confirm sub error');
+
+            if (error.type === 'DBNotFound') {
+              return reply
+                .code(httpStatus.BadRequest)
+                .send({ message: 'Invalid or expired confirmation token' });
             }
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send({ message: 'Internal server error. Please try again later' });
           },
         );
       },
@@ -138,51 +114,30 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
             token: z.string().min(10),
           }),
           response: {
-            200: z.object({ message: z.string() }),
-            400: ApiErrorSchema,
-            404: ApiErrorSchema,
-            409: ApiErrorSchema,
-            500: ApiErrorSchema,
-            502: ApiErrorSchema,
-            503: ApiErrorSchema,
+            [httpStatus.Ok]: ApiOkScheme.meta({ description: 'Unsubscribed' }),
+            [httpStatus.BadRequest]: ApiErrorSchema.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
           },
         },
       },
       async (req, reply) => {
         const { token } = req.params;
-
-        const result = await subscriptionService.unsubscribe(token);
-
-        return result.match(
+        await subscriptionService.unsubscribe(token).match(
           () => {
             return reply.code(200).send({ message: 'Unsubscribed successfully.' });
           },
-
           (error) => {
-            req.log.error({ error }, 'Unsubscribe service error');
-            switch (error.type) {
-              case 'Validation': {
-                return reply.code(400).send({ message: error.message });
-              }
-              case 'NotFound': {
-                return reply.code(404).send({ message: error.message });
-              }
-              case 'Conflict': {
-                return reply.code(409).send({ message: error.message });
-              }
-              case 'External': {
-                return reply.code(502).send({ message: error.message });
-              }
-              case 'RateLimited': {
-                const retryAfter = error.retryAfterSeconds?.toString();
-                if (retryAfter) {
-                  reply.header('Retry-After', retryAfter);
-                }
-                return reply.code(503).send({ message: error.message });
-              }
-              default:
-                return reply.code(500).send({ message: error.message });
+            req.log.error({ error }, 'Unsubscribe error');
+
+            if (error.type === 'DBNotFound') {
+              return reply
+                .code(httpStatus.BadRequest)
+                .send({ message: 'Invalid or expired token' });
             }
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send({ message: 'Internal server error. Please try again later' });
           },
         );
       },
@@ -197,73 +152,32 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
             email: z.email().meta({ example: 'user@mail.com' }),
           }),
           response: {
-            200: z.array(
-              z.object({
-                email: z.string(),
-                repo: z.string(),
-                confirmed: z.boolean(),
-                last_seen_tag: z.string(),
-              }),
-            ),
-            400: ApiErrorSchema,
-            404: ApiErrorSchema,
-            409: ApiErrorSchema,
-            500: ApiErrorSchema,
-            502: ApiErrorSchema,
-            503: ApiErrorSchema,
+            [httpStatus.Ok]: z
+              .array(
+                z.object({
+                  email: z.string(),
+                  repo: z.string(),
+                  confirmed: z.boolean(),
+                  last_seen_tag: z.string().nullable(),
+                }),
+              )
+              .meta({ description: 'List of subscriptions for email' }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
           },
         },
       },
       async (req, reply) => {
-        const email = req.query.email;
-
-        const result = await subscriptionService.listSubscriptions(email);
-
-        return result.match(
-          (subscriptions) => {
-            // Swagger schema requires last_seen_tag to be string (not nullable)
-            type SubscriptionsListItem = {
-              email: string;
-              repo: string;
-              confirmed: boolean;
-              last_seen_tag: string;
-            };
-
-            const response: SubscriptionsListItem[] = subscriptions.map((sub) => ({
-              email: sub.email,
-              repo: sub.repo,
-              confirmed: sub.confirmed,
-              last_seen_tag: sub.last_seen_tag ?? '',
-            }));
-
-            return reply.code(200).send(response);
+        const { email } = req.query;
+        await subscriptionService.listSubscriptions(email).match(
+          (subs) => {
+            return reply.code(httpStatus.Ok).send(subs);
           },
-
           (error) => {
-            req.log.error({ error }, 'List subscriptions service error');
-            switch (error.type) {
-              case 'Validation': {
-                return reply.code(400).send({ message: error.message });
-              }
-              case 'NotFound': {
-                return reply.code(404).send({ message: error.message });
-              }
-              case 'Conflict': {
-                return reply.code(409).send({ message: error.message });
-              }
-              case 'External': {
-                return reply.code(502).send({ message: error.message });
-              }
-              case 'RateLimited': {
-                const retryAfter = error.retryAfterSeconds?.toString();
-                if (retryAfter) {
-                  reply.header('Retry-After', retryAfter);
-                }
-                return reply.code(503).send({ message: error.message });
-              }
-              default:
-                return reply.code(500).send({ message: error.message });
-            }
+            req.log.error({ error }, 'List subscriptions error');
+
+            return reply
+              .code(httpStatus.InternalServerError)
+              .send({ message: 'Internal server error' });
           },
         );
       },

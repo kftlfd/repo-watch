@@ -82,13 +82,19 @@ export function createProcessReleaseNotificationJob({
       return;
     }
 
-    const token = await tokenService.createToken({
+    const tokenResult = await tokenService.createToken({
       email,
       repositoryId: repoId,
       type: 'unsubscribe',
     });
+
+    if (tokenResult.isErr()) {
+      log.error({ error: tokenResult.error }, 'Failed to create unsub token');
+      throw new Error(tokenResult.error.type);
+    }
+
     const { htmlUrl: unsubscribeHtmlUrl, apiUrl: unsubscribeApiUrl } = tokenService.getTokenUrls(
-      token,
+      tokenResult.value,
       'unsubscribe',
     );
 

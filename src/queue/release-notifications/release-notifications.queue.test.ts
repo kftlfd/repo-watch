@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MockLogger } from '@/test/mocks.js';
 import type { TokenUrls } from '@/token/token.service.js';
-import type { AppError } from '@/utils/errors.js';
 import {
   createMockEmailService,
   createMockLogger,
@@ -80,7 +79,7 @@ describe('release-notifications.worker', () => {
 
   it('creates an unsubscribe token and sends the release email with expected payload', async () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v2.0.0'));
-    const createToken = vi.fn().mockResolvedValue('unsubscribe-token');
+    const createToken = vi.fn().mockReturnValue(okAsync('unsubscribe-token'));
     const getTokenUrls = vi.fn().mockReturnValue({
       htmlUrl: 'http://localhost:3000/unsubscribe/unsubscribe-token',
       apiUrl: 'http://localhost:3000/api/unsubscribe/unsubscribe-token',
@@ -120,14 +119,14 @@ describe('release-notifications.worker', () => {
 
   it('throws when email sending fails', async () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v2.0.0'));
-    const sendError: AppError = { type: 'Internal', message: 'Failed to send email' };
+    const sendError = { type: 'Internal', message: 'Failed to send email' };
     const sendEmail = vi.fn().mockReturnValue(errAsync(sendError));
 
     const processJob = createProcessReleaseNotificationJob({
       log: logger,
       repositoryRepo: createMockRepositoryRepo({ getLatestTag }),
       tokenService: createMockTokenService({
-        createToken: vi.fn().mockResolvedValue('unsubscribe-token'),
+        createToken: vi.fn().mockReturnValue(okAsync('unsubscribe-token')),
         getTokenUrls: vi.fn().mockReturnValue({
           htmlUrl: 'http://localhost:3000/unsubscribe/unsubscribe-token',
           apiUrl: 'http://localhost:3000/api/unsubscribe/unsubscribe-token',

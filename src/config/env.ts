@@ -13,7 +13,7 @@ const EnvSchema = z.object({
   SERVER_BASE_URL: z.url().default('http://localhost:3000'),
   EMAIL_FROM: z.email().default('noreply@repo.watch'),
   GITHUB_TOKEN: z.string().min(1).optional(),
-  METRICS_API_KEY: z.string().min(1).default('prometheus'),
+  ADMIN_API_KEY: z.string().min(1).default('admin'),
 });
 
 type EnvInput = Record<keyof z.infer<typeof EnvSchema>, unknown>;
@@ -29,5 +29,5 @@ export const env = EnvSchema.parse({
   SERVER_BASE_URL: process.env['SERVER_BASE_URL'],
   EMAIL_FROM: process.env['EMAIL_FROM'],
   GITHUB_TOKEN: process.env['GITHUB_TOKEN'],
-  METRICS_API_KEY: process.env['METRICS_API_KEY'],
+  ADMIN_API_KEY: process.env['ADMIN_API_KEY'],
 } satisfies EnvInput);

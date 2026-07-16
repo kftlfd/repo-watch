@@ -22,7 +22,7 @@ export function createCachedGithubClient({ config, base, cache, logger }: Deps):
   const log = logger.child({ module: 'github.cached' });
 
   return {
-    getRepo(owner, name) {
+    getRepo(owner, name, signal) {
       const cacheKey = getCacheKey('getRepo', `${owner}/${name}`);
 
       const cacheVal = ResultAsync.fromPromise(cache.get(cacheKey), () => 'CACHE_ERROR' as const)
@@ -36,7 +36,7 @@ export function createCachedGithubClient({ config, base, cache, logger }: Deps):
         });
 
       return cacheVal.orElse(() =>
-        base.getRepo(owner, name).andTee((val) => {
+        base.getRepo(owner, name, signal).andTee((val) => {
           cache
             .set(cacheKey, JSON.stringify(val), config.cacheTtlSeconds)
             .catch((error: unknown) => {
@@ -46,7 +46,7 @@ export function createCachedGithubClient({ config, base, cache, logger }: Deps):
       );
     },
 
-    getLatestRelease(owner, name) {
+    getLatestRelease(owner, name, signal) {
       const cacheKey = getCacheKey('getLatestRelease', `${owner}/${name}`);
 
       const cacheVal = ResultAsync.fromPromise(
@@ -55,7 +55,7 @@ export function createCachedGithubClient({ config, base, cache, logger }: Deps):
       ).andThen((val) => (val ? ok(val) : err('CACHE_MISS')));
 
       return cacheVal.orElse(() =>
-        base.getLatestRelease(owner, name).andTee((val) => {
+        base.getLatestRelease(owner, name, signal).andTee((val) => {
           cache.set(cacheKey, val, config.cacheTtlSeconds).catch((error: unknown) => {
             log.warn({ error }, 'Cache write error');
           });

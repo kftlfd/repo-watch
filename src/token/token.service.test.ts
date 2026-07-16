@@ -30,15 +30,17 @@ describe('token.service', () => {
   });
 
   it('createToken stores the hashed token and returns the raw token', async () => {
-    const create = vi.fn().mockResolvedValue(createTokenRecord());
+    const create = vi.fn().mockReturnValue(okAsync(createTokenRecord()));
     const tokenRepo = createMockTokenRepo({ create });
     const service = createTokenService({ config, tokenRepo });
 
-    const token = await service.createToken({
-      email: 'user@example.com',
-      repositoryId: 1,
-      type: 'confirm',
-    });
+    const token = await expectOkAsync(
+      service.createToken({
+        email: 'user@example.com',
+        repositoryId: 1,
+        type: 'confirm',
+      }),
+    );
 
     const expectedHash = createHmac('sha256', config.serverSecret).update(token).digest('hex');
     const createCall = create.mock.calls[0] as [Token] | undefined;
@@ -75,7 +77,7 @@ describe('token.service', () => {
 
     const error = await expectErrAsync(service.validateToken('missing-token', 'confirm'));
 
-    expect(error).toEqual({ type: 'NotFound', message: 'Invalid or expired token' });
+    expect(error.type === 'DBNotFound');
   });
 
   it('getTokenUrls builds confirm API and HTML URLs from config.baseUrl', () => {

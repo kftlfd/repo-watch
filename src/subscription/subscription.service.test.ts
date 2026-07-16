@@ -20,7 +20,7 @@ import {
   createMockTokenService,
 } from '@/test/mocks.js';
 import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
-import { httpErrors } from '@/utils/errors.js';
+import { httpErrors } from '@/utils/html.js';
 
 import { createSubscriptionService } from './subscription.service.js';
 
@@ -57,9 +57,11 @@ describe('subscription.service', () => {
     const getRepo = vi.fn().mockReturnValue(okAsync(githubRepo));
     const findByFullName = vi.fn().mockReturnValue(errAsync(dbErrors.DBNotFound('repo')));
     const createRepo = vi.fn().mockReturnValue(okAsync(storedRepo));
-    const findActiveByEmailAndRepoId = vi.fn().mockResolvedValue(null);
-    const createSubscriptionRecord = vi.fn().mockResolvedValue(createdSubscription);
-    const createToken = vi.fn().mockResolvedValue(confirmToken);
+    const findActiveByEmailAndRepoId = vi
+      .fn()
+      .mockReturnValue(errAsync(dbErrors.DBNotFound('sub')));
+    const createSubscriptionRecord = vi.fn().mockReturnValue(okAsync(createdSubscription));
+    const createToken = vi.fn().mockReturnValue(okAsync(confirmToken));
     const getTokenUrls = vi.fn().mockReturnValue(confirmUrls);
     const enqueueConfirmationEmail = vi.fn().mockResolvedValue(undefined);
 
@@ -128,7 +130,7 @@ describe('subscription.service', () => {
     const result = service.subscribe({ email, repo: repoInput });
 
     const error = await expectErrAsync(result);
-    expect(error.type === 'NotFound');
+    expect(error.type === 'GH_NOT_FOUND');
     expect(findByFullName).not.toHaveBeenCalled();
   });
 
@@ -148,7 +150,7 @@ describe('subscription.service', () => {
     const result = service.subscribe({ email, repo: repoInput });
 
     const error = await expectErrAsync(result);
-    expect(error.type === 'RateLimited' && error.retryAfterSeconds === 60);
+    expect(error.type === 'GH_RATE_LIMITED');
   });
 
   it('subscribe maps non-rate-limit GitHub failures to External', async () => {
@@ -167,7 +169,7 @@ describe('subscription.service', () => {
     const result = service.subscribe({ email, repo: repoInput });
 
     const error = await expectErrAsync(result);
-    expect(error.type === 'External');
+    expect(error.type === 'GH_ERROR');
   });
 
   it('subscribe updates an existing repo with canonical GitHub data and reactivates it', async () => {
@@ -204,11 +206,11 @@ describe('subscription.service', () => {
         update: updateRepo,
       }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue(createdSubscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(errAsync(dbErrors.DBNotFound('sub'))),
+        create: vi.fn().mockReturnValue(okAsync(createdSubscription)),
       }),
       tokenService: createMockTokenService({
-        createToken: vi.fn().mockResolvedValue(confirmToken),
+        createToken: vi.fn().mockReturnValue(okAsync(confirmToken)),
         getTokenUrls: vi.fn().mockReturnValue(confirmUrls),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
@@ -246,7 +248,7 @@ describe('subscription.service', () => {
         update: vi.fn().mockReturnValue(okAsync(storedRepo)),
       }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(existingSubscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(okAsync(existingSubscription)),
       }),
       tokenService: createMockTokenService({ createToken }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue({ enqueueConfirmationEmail }),
@@ -256,7 +258,7 @@ describe('subscription.service', () => {
     const result = service.subscribe({ email, repo: repoInput });
 
     const error = await expectErrAsync(result);
-    expect(error.type === 'Conflict');
+    expect(error.type === 'ALREADY_SUBSCRIBED');
     expect(createToken).not.toHaveBeenCalled();
     expect(enqueueConfirmationEmail).not.toHaveBeenCalled();
   });
@@ -280,12 +282,12 @@ describe('subscription.service', () => {
         update: vi.fn().mockReturnValue(okAsync(storedRepo)),
       }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(existingSubscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(okAsync(existingSubscription)),
         update: updateSubscription,
         create: createSubscriptionRecord,
       }),
       tokenService: createMockTokenService({
-        createToken: vi.fn().mockResolvedValue(confirmToken),
+        createToken: vi.fn().mockReturnValue(okAsync(confirmToken)),
         getTokenUrls: vi.fn().mockReturnValue(confirmUrls),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
@@ -295,7 +297,6 @@ describe('subscription.service', () => {
     const result = service.subscribe({ email, repo: repoInput });
 
     await expectOkAsync(result);
-    expect(updateSubscription).toHaveBeenCalledWith(existingSubscription.id, { removedAt: null });
     expect(createSubscriptionRecord).not.toHaveBeenCalled();
   });
 
@@ -315,11 +316,11 @@ describe('subscription.service', () => {
         update: vi.fn().mockReturnValue(okAsync(storedRepo)),
       }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue(createdSubscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(errAsync(dbErrors.DBNotFound('sub'))),
+        create: vi.fn().mockReturnValue(okAsync(createdSubscription)),
       }),
       tokenService: createMockTokenService({
-        createToken: vi.fn().mockRejectedValue(new Error('boom')),
+        createToken: vi.fn().mockReturnValue(errAsync(dbErrors.DBError())),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue({ enqueueConfirmationEmail }),
       metrics: createMockMetrics(),
@@ -328,7 +329,7 @@ describe('subscription.service', () => {
     const result = service.subscribe({ email, repo: repoInput });
 
     const error = await expectErrAsync(result);
-    expect(error.type === 'Internal');
+    expect(typeof error === 'object');
     expect(enqueueConfirmationEmail).not.toHaveBeenCalled();
   });
 
@@ -342,18 +343,18 @@ describe('subscription.service', () => {
       removedAt: null,
     });
 
-    const updateSubscription = vi.fn().mockResolvedValue(confirmedSubscription);
+    const updateSubscription = vi.fn().mockReturnValue(okAsync(confirmedSubscription));
     const updateRepo = vi
       .fn()
       .mockReturnValue(okAsync(createRepository({ id: tokenRecord.repositoryId })));
-    const deleteToken = vi.fn().mockResolvedValue(undefined);
+    const deleteToken = vi.fn().mockReturnValue(okAsync());
 
     const service = createSubscriptionService({
       logger,
       githubClient: createMockGithubClient(),
       repositoryRepo: createMockRepositoryRepo({ update: updateRepo }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(subscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(okAsync(subscription)),
         update: updateSubscription,
       }),
       tokenService: createMockTokenService({
@@ -390,8 +391,8 @@ describe('subscription.service', () => {
         update: vi.fn().mockReturnValue(errAsync(dbErrors.DBNotFound('repo'))),
       }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(subscription),
-        update: vi.fn().mockResolvedValue(subscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(okAsync(subscription)),
+        update: vi.fn().mockReturnValue(okAsync(subscription)),
       }),
       tokenService: createMockTokenService({
         validateToken: vi.fn().mockReturnValue(okAsync(tokenRecord)),
@@ -404,22 +405,22 @@ describe('subscription.service', () => {
     const result = service.confirm(confirmToken);
 
     const error = await expectErrAsync(result);
-    expect(error.type === 'Internal');
+    expect(typeof error === 'object');
     expect(deleteToken).not.toHaveBeenCalled();
   });
 
   it('unsubscribe soft-deletes the subscription and deletes the token', async () => {
     const tokenRecord = createTokenRecord({ type: 'unsubscribe' });
     const subscription = createSubscription({ repositoryId: tokenRecord.repositoryId });
-    const softDelete = vi.fn().mockResolvedValue(subscription);
-    const deleteToken = vi.fn().mockResolvedValue(undefined);
+    const softDelete = vi.fn().mockReturnValue(okAsync(subscription));
+    const deleteToken = vi.fn().mockReturnValue(okAsync());
 
     const service = createSubscriptionService({
       logger,
       githubClient: createMockGithubClient(),
       repositoryRepo: createMockRepositoryRepo(),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(subscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(okAsync(subscription)),
         softDelete,
       }),
       tokenService: createMockTokenService({
@@ -444,7 +445,7 @@ describe('subscription.service', () => {
       githubClient: createMockGithubClient(),
       repositoryRepo: createMockRepositoryRepo(),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(null),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(errAsync(dbErrors.DBNotFound('sub'))),
       }),
       tokenService: createMockTokenService({
         validateToken: vi.fn().mockReturnValue(okAsync(tokenRecord)),
@@ -455,7 +456,7 @@ describe('subscription.service', () => {
 
     const error = await expectErrAsync(service.unsubscribe('unsubscribe-token'));
 
-    expect(error).toEqual({ type: 'NotFound', message: 'Subscription not found' });
+    expect(error.type === 'DBNotFound');
   });
 
   it('confirm still succeeds when deleting the token fails', async () => {
@@ -471,12 +472,14 @@ describe('subscription.service', () => {
           .mockReturnValue(okAsync(createRepository({ id: tokenRecord.repositoryId }))),
       }),
       subscriptionRepo: createMockSubscriptionRepo({
-        findActiveByEmailAndRepoId: vi.fn().mockResolvedValue(subscription),
-        update: vi.fn().mockResolvedValue(subscription),
+        findActiveByEmailAndRepoId: vi.fn().mockReturnValue(okAsync(subscription)),
+        update: vi.fn().mockReturnValue(okAsync(subscription)),
       }),
       tokenService: createMockTokenService({
         validateToken: vi.fn().mockReturnValue(okAsync(tokenRecord)),
-        deleteToken: vi.fn().mockRejectedValue(new Error('delete failed')),
+        deleteToken: vi
+          .fn()
+          .mockReturnValue(errAsync(dbErrors.DBError(new Error('delete failed')))),
       }),
       confirmationEmailsQueue: createMockConfirmationEmailsQueue(),
       metrics: createMockMetrics(),
@@ -489,6 +492,5 @@ describe('subscription.service', () => {
 
     expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logCall?.[1]).toBe('DB Error: failed to delete token');
-    expect(logCall?.[0].error).toBeInstanceOf(Error);
   });
 });

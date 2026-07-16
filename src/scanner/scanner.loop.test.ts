@@ -11,7 +11,7 @@ import {
   createMockRepoSubscriptionsQueue,
 } from '@/test/mocks.js';
 import { expectErr, expectOk } from '@/test/utils/result.js';
-import { httpErrors } from '@/utils/errors.js';
+import { httpErrors } from '@/utils/html.js';
 import { sleep } from '@/utils/sleep.js';
 
 import { createFetchWithRetryFn, createProcessRepositoryFn } from './scanner.loop.js';
@@ -47,7 +47,9 @@ describe('scanner.loop', () => {
       const githubClient = createMockGithubClient({
         getLatestRelease: vi
           .fn()
-          .mockReturnValueOnce(errAsync(httpErrors.TooManyRequests(7)))
+          .mockReturnValueOnce(
+            errAsync({ type: 'HTTP_ERROR', error: httpErrors.TooManyRequests(7) }),
+          )
           .mockReturnValueOnce(okAsync('v2.0.0')),
       });
 
@@ -67,8 +69,12 @@ describe('scanner.loop', () => {
       const githubClient = createMockGithubClient({
         getLatestRelease: vi
           .fn()
-          .mockReturnValueOnce(errAsync(httpErrors.TooManyRequests()))
-          .mockReturnValueOnce(errAsync(httpErrors.TooManyRequests()))
+          .mockReturnValueOnce(
+            errAsync({ type: 'HTTP_ERROR', error: httpErrors.TooManyRequests() }),
+          )
+          .mockReturnValueOnce(
+            errAsync({ type: 'HTTP_ERROR', error: httpErrors.TooManyRequests() }),
+          )
           .mockReturnValueOnce(okAsync('v2.0.0')),
       });
 
@@ -89,7 +95,11 @@ describe('scanner.loop', () => {
 
     it('returns immediately on non-rate-limit errors', async () => {
       const githubClient = createMockGithubClient({
-        getLatestRelease: vi.fn().mockReturnValue(errAsync(httpErrors.Unauthorized('fail'))),
+        getLatestRelease: vi
+          .fn()
+          .mockReturnValue(
+            errAsync({ type: 'HTTP_ERROR', error: httpErrors.Unauthorized('fail') }),
+          ),
       });
 
       const fetchWithRetry = createFetchWithRetryFn({
@@ -274,7 +284,9 @@ describe('scanner.loop', () => {
     });
 
     it('fetchWithRetry stops retry loop when aborted during sleep', async () => {
-      const getLatestRelease = vi.fn(() => errAsync(httpErrors.TooManyRequests(1)));
+      const getLatestRelease = vi.fn(() =>
+        errAsync({ type: 'HTTP_ERROR' as const, error: httpErrors.TooManyRequests(1) }),
+      );
 
       const githubClient = createMockGithubClient({ getLatestRelease });
 

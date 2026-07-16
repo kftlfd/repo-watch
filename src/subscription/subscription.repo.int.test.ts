@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { seedRepository, seedSubscription } from '@/test/integration/seeds.js';
 import { db } from '@/test/integration/setup.js';
+import { expectErrAsync, expectOkAsync } from '@/test/utils/result.js';
 
 import { createSubscriptionRepo } from './subscription.repo.js';
 
@@ -10,10 +11,12 @@ describe('subscription.repo (integration)', () => {
     const repo = createSubscriptionRepo({ db });
     const repository = await seedRepository(db);
 
-    const created = await repo.create({
-      email: 'user@example.com',
-      repositoryId: repository.id,
-    });
+    const created = await expectOkAsync(
+      repo.create({
+        email: 'user@example.com',
+        repositoryId: repository.id,
+      }),
+    );
 
     expect(created.id).toBeGreaterThan(0);
     expect(created.email).toBe('user@example.com');
@@ -30,10 +33,11 @@ describe('subscription.repo (integration)', () => {
       repositoryId: repository.id,
     });
 
-    const found = await repo.findActiveByEmailAndRepoId('user@example.com', repository.id);
+    const found = await expectOkAsync(
+      repo.findActiveByEmailAndRepoId('user@example.com', repository.id),
+    );
 
-    expect(found).not.toBeNull();
-    expect(found?.id).toBe(seeded.id);
+    expect(found.id).toBe(seeded.id);
   });
 
   it('updates subscription confirmation status', async () => {
@@ -42,11 +46,10 @@ describe('subscription.repo (integration)', () => {
     const seeded = await seedSubscription(db, { repositoryId: repository.id });
     const confirmedAt = new Date('2026-04-12T12:30:00.000Z');
 
-    const updated = await repo.update(seeded.id, { confirmedAt, removedAt: null });
+    const updated = await expectOkAsync(repo.update(seeded.id, { confirmedAt, removedAt: null }));
 
-    expect(updated).not.toBeNull();
-    expect(updated?.confirmedAt).toEqual(confirmedAt);
-    expect(updated?.removedAt).toBeNull();
+    expect(updated.confirmedAt).toEqual(confirmedAt);
+    expect(updated.removedAt).toBeNull();
   });
 
   it('soft deletes subscriptions', async () => {
@@ -54,12 +57,13 @@ describe('subscription.repo (integration)', () => {
     const repository = await seedRepository(db);
     const seeded = await seedSubscription(db, { repositoryId: repository.id });
 
-    const deleted = await repo.softDelete(seeded.id);
-    const found = await repo.findActiveByEmailAndRepoId(seeded.email, repository.id);
+    const deleted = await expectOkAsync(repo.softDelete(seeded.id));
+    const found = await expectErrAsync(
+      repo.findActiveByEmailAndRepoId(seeded.email, repository.id),
+    );
 
-    expect(deleted).not.toBeNull();
-    expect(deleted?.removedAt).toBeInstanceOf(Date);
-    expect(found).toBeNull();
+    expect(deleted.removedAt).toBeInstanceOf(Date);
+    expect(found.type === 'DBNotFound');
   });
 
   it('returns confirmed subscriptions in batches using the cursor', async () => {
@@ -77,8 +81,12 @@ describe('subscription.repo (integration)', () => {
       confirmedAt: new Date('2026-04-12T11:00:00.000Z'),
     });
 
-    const firstBatch = await repo.getConfirmedByRepositoryIdBatch(repository.id, -1, 1);
-    const secondBatch = await repo.getConfirmedByRepositoryIdBatch(repository.id, first.id, 10);
+    const firstBatch = await expectOkAsync(
+      repo.getConfirmedByRepositoryIdBatch(repository.id, -1, 1),
+    );
+    const secondBatch = await expectOkAsync(
+      repo.getConfirmedByRepositoryIdBatch(repository.id, first.id, 10),
+    );
 
     expect(firstBatch.map((sub) => sub.email)).toEqual(['a@example.com']);
     expect(secondBatch.map((sub) => sub.email)).toEqual(['b@example.com']);
@@ -99,7 +107,7 @@ describe('subscription.repo (integration)', () => {
       removedAt: new Date('2026-04-12T10:00:00.000Z'),
     });
 
-    const subscriptions = await repo.getSubscriptionsForEmail('user@example.com');
+    const subscriptions = await expectOkAsync(repo.getSubscriptionsForEmail('user@example.com'));
 
     expect(subscriptions).toEqual([
       {

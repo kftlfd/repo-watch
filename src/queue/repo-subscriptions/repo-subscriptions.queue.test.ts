@@ -93,7 +93,7 @@ describe('repo-subscriptions.worker', () => {
 
   it('marks repo inactive when the first batch has no confirmed subscribers', async () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v2.0.0'));
-    const getConfirmedByRepositoryIdBatch = vi.fn().mockResolvedValue([]);
+    const getConfirmedByRepositoryIdBatch = vi.fn().mockResolvedValue(okAsync([]));
     const update = vi.fn().mockReturnValue(okAsync());
     const enqueueReleaseEmail = vi.fn();
 
@@ -139,9 +139,9 @@ describe('repo-subscriptions.worker', () => {
     ];
     const getConfirmedByRepositoryIdBatch = vi
       .fn()
-      .mockResolvedValueOnce(firstBatch)
-      .mockResolvedValueOnce(secondBatch)
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce(okAsync(firstBatch))
+      .mockResolvedValueOnce(okAsync(secondBatch))
+      .mockResolvedValueOnce(okAsync([]));
     const update = vi.fn();
     const enqueueReleaseEmail = vi.fn().mockResolvedValue(undefined);
 
@@ -187,21 +187,23 @@ describe('repo-subscriptions.worker', () => {
     const getLatestTag = vi.fn().mockReturnValue(okAsync('v2.0.0'));
     const getConfirmedByRepositoryIdBatch = vi
       .fn()
-      .mockResolvedValueOnce([
-        createSubscription({
-          id: 10,
-          email: 'a@example.com',
-          repositoryId: 1,
-          confirmedAt: new Date(),
-        }),
-        createSubscription({
-          id: 11,
-          email: 'b@example.com',
-          repositoryId: 1,
-          confirmedAt: new Date(),
-        }),
-      ])
-      .mockResolvedValueOnce([]);
+      .mockReturnValueOnce(
+        okAsync([
+          createSubscription({
+            id: 10,
+            email: 'a@example.com',
+            repositoryId: 1,
+            confirmedAt: new Date(),
+          }),
+          createSubscription({
+            id: 11,
+            email: 'b@example.com',
+            repositoryId: 1,
+            confirmedAt: new Date(),
+          }),
+        ]),
+      )
+      .mockReturnValueOnce(okAsync([]));
     const enqueueError = new Error('queue unavailable');
     const enqueueReleaseEmail = vi
       .fn()

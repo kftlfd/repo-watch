@@ -21,11 +21,15 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
           consumes: ['application/json', 'application/x-www-form-urlencoded'],
           body: SubscribeInputSchema,
           response: {
-            [httpStatus.Ok]: ApiOkScheme,
-            [httpStatus.NotFound]: ApiErrorSchema,
-            [httpStatus.Conflict]: ApiErrorSchema,
-            [httpStatus.InternalServerError]: ApiErrorSchema,
-            [httpStatus.Unavailable]: ApiErrorSchema,
+            [httpStatus.Ok]: ApiOkScheme.meta({
+              description: 'Subscribed, confirmation email sent',
+            }),
+            [httpStatus.NotFound]: ApiErrorSchema.meta({ description: 'Repo not found' }),
+            [httpStatus.Conflict]: ApiErrorSchema.meta({
+              description: 'Active subscription for email+repo already exist',
+            }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
+            [httpStatus.Unavailable]: ApiErrorSchema.meta({ description: 'Upstream error' }),
           },
         },
       },
@@ -70,9 +74,9 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
             token: z.string().min(10),
           }),
           response: {
-            [httpStatus.Ok]: ApiOkScheme,
-            [httpStatus.BadRequest]: ApiErrorSchema,
-            [httpStatus.InternalServerError]: ApiErrorSchema,
+            [httpStatus.Ok]: ApiOkScheme.meta({ description: 'Subscription confirmed' }),
+            [httpStatus.BadRequest]: ApiErrorSchema.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
           },
         },
       },
@@ -110,9 +114,9 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
             token: z.string().min(10),
           }),
           response: {
-            [httpStatus.Ok]: ApiOkScheme,
-            [httpStatus.BadRequest]: ApiErrorSchema,
-            [httpStatus.InternalServerError]: ApiErrorSchema,
+            [httpStatus.Ok]: ApiOkScheme.meta({ description: 'Unsubscribed' }),
+            [httpStatus.BadRequest]: ApiErrorSchema.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
           },
         },
       },
@@ -148,15 +152,17 @@ export function createSubscriptionApi({ subscriptionService }: Deps): FastifyPlu
             email: z.email().meta({ example: 'user@mail.com' }),
           }),
           response: {
-            [httpStatus.Ok]: z.array(
-              z.object({
-                email: z.string(),
-                repo: z.string(),
-                confirmed: z.boolean(),
-                last_seen_tag: z.string().nullable(),
-              }),
-            ),
-            [httpStatus.InternalServerError]: ApiErrorSchema,
+            [httpStatus.Ok]: z
+              .array(
+                z.object({
+                  email: z.string(),
+                  repo: z.string(),
+                  confirmed: z.boolean(),
+                  last_seen_tag: z.string().nullable(),
+                }),
+              )
+              .meta({ description: 'List of subscriptions for email' }),
+            [httpStatus.InternalServerError]: ApiErrorSchema.meta({ description: 'Server error' }),
           },
         },
       },

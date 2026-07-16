@@ -27,8 +27,10 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
       {
         schema: {
           tags: [OpenApiTag.Web],
+          consumes: [],
+          produces: ['text/html'],
           response: {
-            [httpStatus.Ok]: HtmlResponseScheme,
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Home page' }),
           },
         },
       },
@@ -43,12 +45,19 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
         schema: {
           tags: [OpenApiTag.Web],
           body: SubscribeInputSchema,
+          consumes: ['multipart/form-data', 'application/x-www-form-urlencoded'],
+          produces: ['text/html'],
           response: {
-            [httpStatus.Ok]: HtmlResponseScheme,
-            [httpStatus.NotFound]: HtmlResponseScheme,
-            [httpStatus.Conflict]: HtmlResponseScheme,
-            [httpStatus.InternalServerError]: HtmlResponseScheme,
-            [httpStatus.Unavailable]: HtmlResponseScheme,
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Subscribe form' }),
+            [httpStatus.BadRequest]: HtmlResponseScheme.meta({ description: 'Invalid inputs' }),
+            [httpStatus.NotFound]: HtmlResponseScheme.meta({ description: 'Repo not found' }),
+            [httpStatus.Conflict]: HtmlResponseScheme.meta({
+              description: 'Active subscription for email+repo already exists',
+            }),
+            [httpStatus.InternalServerError]: HtmlResponseScheme.meta({
+              description: 'Server error',
+            }),
+            [httpStatus.Unavailable]: HtmlResponseScheme.meta({ description: 'Upstream error' }),
           },
         },
       },
@@ -93,10 +102,14 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
           params: z.object({
             token: z.string().min(10),
           }),
+          consumes: [],
+          produces: ['text/html'],
           response: {
-            [httpStatus.Ok]: HtmlResponseScheme,
-            [httpStatus.BadRequest]: HtmlResponseScheme,
-            [httpStatus.InternalServerError]: HtmlResponseScheme,
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Subscription confirmed' }),
+            [httpStatus.BadRequest]: HtmlResponseScheme.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: HtmlResponseScheme.meta({
+              description: 'Server error',
+            }),
           },
         },
       },
@@ -132,10 +145,14 @@ export function createSubscriptionWeb({ subscriptionService }: Deps): FastifyPlu
           params: z.object({
             token: z.string().min(10),
           }),
+          consumes: [],
+          produces: ['text/html'],
           response: {
-            [httpStatus.Ok]: HtmlResponseScheme,
-            [httpStatus.BadRequest]: HtmlResponseScheme,
-            [httpStatus.InternalServerError]: HtmlResponseScheme,
+            [httpStatus.Ok]: HtmlResponseScheme.meta({ description: 'Unsubscribed' }),
+            [httpStatus.BadRequest]: HtmlResponseScheme.meta({ description: 'Invalid token' }),
+            [httpStatus.InternalServerError]: HtmlResponseScheme.meta({
+              description: 'Server error',
+            }),
           },
         },
       },

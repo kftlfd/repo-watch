@@ -5,6 +5,7 @@ import scalarApiReference from '@scalar/fastify-api-reference';
 import Fastify from 'fastify';
 import {
   jsonSchemaTransform,
+  jsonSchemaTransformObject,
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
@@ -71,6 +72,7 @@ export function createFastifyServer({
       },
     },
     transform: jsonSchemaTransform,
+    transformObject: jsonSchemaTransformObject,
   });
 
   app.register(scalarApiReference, {
@@ -92,18 +94,18 @@ export function createFastifyServer({
       done();
     });
 
-    adminRoutes.get('/metrics', (req, reply) => {
+    adminRoutes.get('/metrics', { schema: { hide: true } }, (req, reply) => {
       reply.header('content-type', metricsRegistry.contentType);
       return metricsRegistry.metrics();
     });
 
-    adminRoutes.get('/live', (req, reply) => {
+    adminRoutes.get('/live', { schema: { hide: true } }, (req, reply) => {
       const status = runtimeStatus.getState();
       reply.code(status !== 'stopped' ? 200 : 503);
       return status;
     });
 
-    adminRoutes.get('/health', (req, reply) => {
+    adminRoutes.get('/health', { schema: { hide: true } }, (req, reply) => {
       const status = runtimeStatus.getState();
       reply.code(status === 'running' ? 200 : 503);
       return status;

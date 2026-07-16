@@ -83,25 +83,33 @@ export function createFastifyServer({
     },
   });
 
-  app.get('/metrics', (req, reply) => {
-    if (req.headers.authorization !== `Bearer ${config.metricsApiKey}`) {
-      reply.callNotFound();
-      return;
-    }
-    reply.header('content-type', metricsRegistry.contentType);
-    return metricsRegistry.metrics();
-  });
+  app.register((adminRoutes, opts, done) => {
+    adminRoutes.addHook('onRequest', (req, reply, done) => {
+      if (req.headers.authorization !== `Bearer ${config.adminApiKey}`) {
+        reply.callNotFound();
+        return;
+      }
+      done();
+    });
 
-  app.get('/live', (req, reply) => {
-    const status = runtimeStatus.getState();
-    reply.code(status !== 'stopped' ? 200 : 503);
-    return status;
-  });
+    adminRoutes.get('/metrics', (req, reply) => {
+      reply.header('content-type', metricsRegistry.contentType);
+      return metricsRegistry.metrics();
+    });
 
-  app.get('/health', (req, reply) => {
-    const status = runtimeStatus.getState();
-    reply.code(status === 'running' ? 200 : 503);
-    return status;
+    adminRoutes.get('/live', (req, reply) => {
+      const status = runtimeStatus.getState();
+      reply.code(status !== 'stopped' ? 200 : 503);
+      return status;
+    });
+
+    adminRoutes.get('/health', (req, reply) => {
+      const status = runtimeStatus.getState();
+      reply.code(status === 'running' ? 200 : 503);
+      return status;
+    });
+
+    done();
   });
 
   app.register(formbody);

@@ -11,4 +11,4 @@ scrape_configs:
       - targets: ['host.docker.internal:3000']
     authorization:
       type: Bearer
-      credentials: metrics-endpoint-guard-api-key
+      credentials: admin

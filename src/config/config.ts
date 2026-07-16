@@ -15,7 +15,7 @@ export type DBConfig = {
 export type ServerConfig = {
   host: string;
   port: number;
-  metricsApiKey: string;
+  adminApiKey: string;
 };
 
 export type GithubClientConfig = {
@@ -124,7 +124,7 @@ const defaultConfig: Config = {
   server: {
     host: env.HOST ?? (isDev ? '127.0.0.1' : '0.0.0.0'),
     port: env.PORT ?? 3000,
-    metricsApiKey: env.METRICS_API_KEY,
+    adminApiKey: env.ADMIN_API_KEY,
   },
   githubClient: {
     baseUrl: 'https://api.github.com',

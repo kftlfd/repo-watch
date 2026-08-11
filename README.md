@@ -1,11 +1,11 @@
 # Repo Watch
 
-GitHub release notification service
+GitHub releases notification service
 
 **Stack:**
 
-- NodeJS
 - TypeScript
+- NodeJS
 - Fastify
 - PostgreSQL + Drizzle
 - Redis + BullMQ
@@ -21,86 +21,75 @@ cp .env.example .env
 
 ```
 
-2. Run in docker
+2. Run
+   - in docker
+
+   ```bash
+   docker compose up
+   ```
+
+   - locally
+
+   ```bash
+   npm install
+
+   # start DB and Redis
+   npm run dev:infa:up
+
+   npm run dev
+   ```
+
+3. Monitoring
 
 ```bash
-docker compose up
-```
-
-3. Run locally
-
-```bash
-npm install
-
-# start DB and Redis
-docker compose up -d postgres redis
-
-npm run start
+cd monitoring
+docker compose up -d
 ```
 
 ## Project overview
 
-Monolith service with 3 main parts:
+Monolith, on start runs DB migrations and starts 3 main services:
 
 ### 1. Web server
 
 - API endpoints
   - `subscribe` to new repo releases notifications
-    - checks if the repo exists (via Github API), saves/updates repo in the DB
-    - checks if not already subscribed
-    - creates subscription, marks repo as active in DB
-    - doesn't save the current repo release tag yet - `Scanner` does that eventually
-    - generates confirmation token
-    - enqueues confirmation email to be sent
+    - if the repo exists, creates subscription and sends an email with confirmation token/link
   - `confirm` subscription
-    - checks token validity
-    - marks subscription as confirmed and reaffirms repo as active
-    - (tries to delete the token, ignores error)
+    - checks token validity, marks subscription as confirmed
   - `unsubscribe`
-    - checks token validity
-    - mark subscription as removed (if exists)
-    - (tries to delete the token, ignore error)
+    - checks token validity, marks subscription as removed
   - `list subscriptions`
-    - query DB for subscriptions for given email
-    - return list of subscriptions (empty list even if email is not found)
+    - returns list of active subscriptions for given email
 
-- HTTP pages (uses simple html-strings)
-  - subscribe form
+- Admin API endpoints
+  - `health`, `metrics`
+
+- API docs (auto-generated)
+
+- HTTP pages
+  - subscription form
   - confirm/unsubscribe results
 
 ### 2. Scanner
 
-- infinite loop
-- queries `batch_size` of least recently checked active repos, for each repo:
-  - checks if there is a new release (wait/backoff on GH API rate limits, skips and goes to the next repo on other errors)
-  - if the new release is detected:
-    - update the repo in DB and save repo+tag to cache
-    - enqueue a job to notify subscribers for that repo
-    - doesn't enqueue a job if it's a first check of the repo
+- continuously queries for the least recently checked active repos (that have active subscriptions)
+- checks if there is a new release in the repo
+- sends a job to the queue to notify subscribers
 
 ### 3. Queue workers
 
-- Queue/worker that sends "confirm subscription" emails
+- Queue/worker for sending user-account emails
+
+- Queue/worker for sending "new release notification" emails
 
 - Queue/worker that processes a "notify subscribers for repo" job:
-  - checks if the tag in job is the latest tag (skip the job if not)
-  - queries active subscribers for the repo (in batches, using cursor)
-  - for each: enqueues a "send notification email" job
-  - if no subscribers found: marks repo as inactive (to exclude from scanning)
-
-- Queue/worker that sends notification emails
-  - checks if the tag in job is the latest tag (skip the job if not)
-  - sends email to subscriber
+  - queries active subscribers for the repo
+  - creates a new "send notification email" queue job for each subscriber
+  - if no subscribers found, marks repo as inactive
 
 ### Additional notes
 
-- runs DB migrations on the service start
-- uses Redis to cache Github API responses
-- uses Redis to cache the latest repo+tag for reducing the DB queries
-- unit and integration tests
-
-### Intentional Decisions
-
-- actual email delivery is intentionally not implemented yet (low priority).
-
-- API returns extra `5xx` errors (DB errors, rate limits, etc.) which are not specified in the Swagger contract.
+- caching Github API responses in Redis
+- caching latest repo+tag in Redis to reduce DB queries
+- actual email delivery is not implemented yet

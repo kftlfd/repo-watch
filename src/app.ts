@@ -3,7 +3,6 @@ import type { Logger } from '@/logger/logger.js';
 import { createRedisCache } from '@/cache/redisCache.js';
 import { createDBModule } from '@/db/client.js';
 import { createEmailService } from '@/email/email.service.js';
-import { createCachedGithubClient } from '@/github/github.cached.js';
 import { createGithubClient } from '@/github/github.client.js';
 import { createMetrics } from '@/metrics/metrics.js';
 import { createConfirmationEmailsQueue } from '@/queue/confirmation-emails/confirmation-emails.queue.js';
@@ -21,6 +20,8 @@ import { createTokenRepo } from '@/token/token.repo.js';
 import { createTokenService } from '@/token/token.service.js';
 
 import type { RuntimeStatus } from './lib/runtime/runtime.js';
+import { createCachedHttpClient } from './lib/http/http.cached-client.js';
+import { createHttpClient } from './lib/http/http.client.js';
 
 type Deps = {
   config: Config;
@@ -37,12 +38,15 @@ export function createApp({ config, logger, runtimeStatus }: Deps) {
   const cache = createRedisCache(redis);
 
   // clients
-  const ghClient = createGithubClient({ config: config.githubClient, metrics: metrics.github });
-  const cachedGhClient = createCachedGithubClient({
+  const cachedGhClient = createGithubClient({
+    httpClient: createCachedHttpClient({
+      baseClient: createHttpClient(),
+      cache,
+      logger,
+      ttlMs: config.githubClient.timeoutMs,
+    }),
     config: config.githubClient,
-    base: ghClient,
-    cache,
-    logger,
+    metrics: metrics.github,
   });
 
   // repos
